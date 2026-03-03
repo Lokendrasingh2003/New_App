@@ -1,0 +1,40 @@
+import type { SubscriptionPlan } from '../../types/Subscription'
+
+export const plansSeed: SubscriptionPlan[] = [
+  {
+    id: 'plan_free',
+    name: 'FREE',
+    price: 0,
+    durationDays: 180,
+    productLimit: 20,
+    priorityRank: 10,
+    features: ['Basic listing', 'Standard support', 'Up to 20 products'],
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'plan_basic',
+    name: 'BASIC',
+    price: 299,
+    durationDays: 30,
+    productLimit: 120,
+    priorityRank: 50,
+    features: ['Priority listing', 'Basic analytics', 'Up to 120 products'],
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'plan_premium',
+    name: 'PREMIUM',
+    price: 999,
+    durationDays: 30,
+    productLimit: null,
+    priorityRank: 90,
+    features: ['Top priority listing', 'Advanced analytics', 'Unlimited products'],
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+]
