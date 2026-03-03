@@ -3,6 +3,7 @@ import { RouterProvider } from 'react-router-dom'
 import { router } from './routes'
 import { ShopkeeperStoreProvider } from '../shared/store/ShopkeeperStore'
 import { AppFeedbackProvider } from '../shared/ui/AppFeedbackProvider'
+import AppErrorBoundary from '../shared/ui/AppErrorBoundary'
 
 const theme = createTheme({
   palette: {
@@ -218,11 +219,13 @@ const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AppFeedbackProvider>
-        <ShopkeeperStoreProvider>
-          <RouterProvider router={router} />
-        </ShopkeeperStoreProvider>
-      </AppFeedbackProvider>
+      <AppErrorBoundary level="app">
+        <AppFeedbackProvider>
+          <ShopkeeperStoreProvider>
+            <RouterProvider router={router} />
+          </ShopkeeperStoreProvider>
+        </AppFeedbackProvider>
+      </AppErrorBoundary>
     </ThemeProvider>
   )
 }

@@ -1,4 +1,5 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
+import type { ReactElement } from 'react'
 import DashboardPage from '../pages/DashboardPage'
 import LoginPage from '../pages/LoginPage'
 import ManageSubcategoriesPage from '../pages/ManageSubcategoriesPage'
@@ -17,6 +18,9 @@ import ShopLinkPage from '../pages/ShopLinkPage'
 import ShopLayout from '../layout/ShopLayout'
 import ProtectedRoute from '../shared/auth/ProtectedRoute'
 import { superadminRoutes } from '../../superadmin-dashboard/app/routes'
+import AppErrorBoundary from '../shared/ui/AppErrorBoundary'
+
+const withPageBoundary = (element: ReactElement) => <AppErrorBoundary level="page">{element}</AppErrorBoundary>
 
 export const router = createBrowserRouter([
   ...superadminRoutes,
@@ -26,7 +30,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login',
-    element: <LoginPage />,
+    element: withPageBoundary(<LoginPage />),
   },
   {
     path: '/shop',
@@ -42,60 +46,60 @@ export const router = createBrowserRouter([
       },
       {
         path: 'dashboard',
-        element: <DashboardPage />,
+        element: withPageBoundary(<DashboardPage />),
       },
       {
         path: 'orders',
-        element: <OrdersListPage />,
+        element: withPageBoundary(<OrdersListPage />),
       },
       {
         path: 'orders/:orderId',
-        element: <OrderDetailsPage />,
+        element: withPageBoundary(<OrderDetailsPage />),
       },
       {
         path: 'products',
-        element: <ProductsListPage />,
+        element: withPageBoundary(<ProductsListPage />),
       },
       {
         path: 'subcategories',
-        element: <ManageSubcategoriesPage />,
+        element: withPageBoundary(<ManageSubcategoriesPage />),
       },
       {
         path: 'products/new',
-        element: <ProductCreatePage />,
+        element: withPageBoundary(<ProductCreatePage />),
       },
       {
         path: 'products/:productId/edit',
-        element: <ProductEditPage />,
+        element: withPageBoundary(<ProductEditPage />),
       },
       {
         path: 'offers',
-        element: <OffersListPage />,
+        element: withPageBoundary(<OffersListPage />),
       },
       {
         path: 'offers/new',
-        element: <OfferCreatePage />,
+        element: withPageBoundary(<OfferCreatePage />),
       },
       {
         path: 'offers/:offerId/edit',
-        element: <OfferEditPage />,
+        element: withPageBoundary(<OfferEditPage />),
       },
       {
         path: 'shop-link',
-        element: <ShopLinkPage />,
+        element: withPageBoundary(<ShopLinkPage />),
       },
       {
         path: 'qr',
-        element: <QrCodePage />,
+        element: withPageBoundary(<QrCodePage />),
       },
       {
         path: 'settings',
-        element: <SettingsPage />,
+        element: withPageBoundary(<SettingsPage />),
       },
     ],
   },
   {
     path: '*',
-    element: <NotFoundPage />,
+    element: withPageBoundary(<NotFoundPage />),
   },
 ])

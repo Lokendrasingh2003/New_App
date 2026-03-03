@@ -4,6 +4,7 @@ export interface ProductVariant {
   price: number
   mrp: number
   inStock: boolean
+  stockQty?: number
 }
 
 export interface Product {

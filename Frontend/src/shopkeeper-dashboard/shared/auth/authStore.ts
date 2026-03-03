@@ -1,13 +1,81 @@
-const DEMO_AUTH_TOKEN_KEY = 'shop_demo_token'
+import api from '../../../utils/axiosInstance'
 
-export const loginDemo = (mobile: string): void => {
-  localStorage.setItem(DEMO_AUTH_TOKEN_KEY, `demo-token-${mobile}`)
+const SHOPKEEPER_AUTH_TOKEN_KEY = 'shopkeeper_auth_token'
+
+type ShopkeeperLoginResponse = {
+  success: boolean
+  data?: {
+    token?: string
+    refreshToken?: string
+    shopkeeper?: {
+      id: string
+      phone: string
+      shopId: string | null
+      status: string
+    }
+  }
+  message?: string
 }
 
-export const logoutDemo = (): void => {
-  localStorage.removeItem(DEMO_AUTH_TOKEN_KEY)
+type TokenPayload = {
+  sub?: string
+  shopId?: string | null
+  type?: string
+  tokenUse?: string
 }
 
-export const isLoggedIn = (): boolean => {
-  return Boolean(localStorage.getItem(DEMO_AUTH_TOKEN_KEY))
+const decodeStoredTokenPayload = (): TokenPayload | null => {
+  const token = getStoredToken()
+  if (!token) {
+    return null
+  }
+
+  const parts = token.split('.')
+  if (parts.length < 2) {
+    return null
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=')
+    const jsonPayload = atob(padded)
+    return JSON.parse(jsonPayload) as TokenPayload
+  } catch {
+    return null
+  }
+}
+
+export const getStoredToken = (): string | null => {
+  return localStorage.getItem(SHOPKEEPER_AUTH_TOKEN_KEY)
+}
+
+export const isShopkeeperLoggedIn = (): boolean => {
+  return Boolean(getStoredToken())
+}
+
+export const getShopkeeperId = (): string | null => {
+  return decodeStoredTokenPayload()?.sub ?? null
+}
+
+export const getShopkeeperShopId = (): string | null => {
+  return decodeStoredTokenPayload()?.shopId ?? null
+}
+
+export const loginShopkeeper = async (phone: string, password: string): Promise<string> => {
+  const { data } = await api.post<ShopkeeperLoginResponse>('/api/shopkeeper/login', {
+    phone,
+    password,
+  })
+
+  const token = data?.data?.token
+  if (!token) {
+    throw new Error(data?.message || 'Login failed. Please try again.')
+  }
+
+  localStorage.setItem(SHOPKEEPER_AUTH_TOKEN_KEY, token)
+  return token
+}
+
+export const logoutShopkeeper = (): void => {
+  localStorage.removeItem(SHOPKEEPER_AUTH_TOKEN_KEY)
 }

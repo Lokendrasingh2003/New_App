@@ -3,6 +3,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import SearchIcon from '@mui/icons-material/Search'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import {
+  Alert,
   Box,
   Button,
   Container,
@@ -30,32 +31,75 @@ import { useNavigate } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyStateCard from '../components/EmptyStateCard'
 import PageHeader from '../components/PageHeader'
-import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
+import type { Product } from '../types/product'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import {
+  deleteProduct as deleteProductApi,
+  getProducts,
+  updateProduct as updateProductApi,
+  updateStock,
+} from '../services/productService'
 
 type StockFilter = 'ALL' | 'LOW' | 'OUT' | 'IN'
 type ActiveFilter = 'ALL' | 'ACTIVE' | 'INACTIVE'
 
 const ProductsListPage = () => {
   const navigate = useNavigate()
-  const { products, toggleProductActive, toggleProductInStock, deleteProduct } = useShopkeeperStore()
+  const shopId = getShopkeeperShopId()
   const { showMessage } = useAppFeedback()
+  const [products, setProducts] = useState<Product[]>([])
+  const [totalProducts, setTotalProducts] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [stockFilter, setStockFilter] = useState<StockFilter>('ALL')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('ALL')
-  const [isLoading, setIsLoading] = useState(true)
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
+  const [actionProductId, setActionProductId] = useState<string | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState<{ id: string; name: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const [viewProductId, setViewProductId] = useState<string | null>(null)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    if (!shopId) {
       setIsLoading(false)
-    }, 380)
+      setPageError('Shop not found for current session.')
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      const loadProducts = async () => {
+        try {
+          setPageError('')
+          setIsLoading(true)
+
+          const response = await getProducts(shopId, {
+            search: searchQuery.trim() || undefined,
+            category: categoryFilter === 'ALL' ? undefined : categoryFilter,
+            active:
+              activeFilter === 'ALL'
+                ? undefined
+                : activeFilter === 'ACTIVE',
+            limit: 100,
+            offset: 0,
+          })
+
+          setProducts(response.products)
+          setTotalProducts(response.pagination.total)
+        } catch (error) {
+          setPageError(error instanceof Error ? error.message : 'Unable to load products.')
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
+      void loadProducts()
+    }, 320)
 
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [activeFilter, categoryFilter, searchQuery, shopId])
 
   const categories = useMemo(
     () => Array.from(new Set(products.map((item) => item.category))).sort(),
@@ -79,6 +123,88 @@ const ProductsListPage = () => {
       return matchesSearch && matchesCategory && matchesStock && matchesActive
     })
   }, [products, searchQuery, categoryFilter, stockFilter, activeFilter])
+
+  useEffect(() => {
+    setPaginationModel((prev) => ({ ...prev, page: 0 }))
+  }, [searchQuery, categoryFilter, stockFilter, activeFilter])
+
+  const toUpsertPayload = (product: Product, activeOverride?: boolean) => {
+    if (!product.categoryId) {
+      throw new Error('Category ID missing for selected product.')
+    }
+
+    return {
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      categoryName: product.category,
+      subcategoryName: product.subcategory,
+      images: product.images,
+      active: typeof activeOverride === 'boolean' ? activeOverride : product.active,
+      variants: product.variants.map((variant) => {
+        const stockQty = Math.max(0, Number(variant.stockQty || 0))
+        return {
+          id: variant.id,
+          label: variant.label,
+          price: Number(variant.price),
+          mrp: Number(variant.mrp),
+          inStock: Boolean(variant.inStock && stockQty > 0),
+          stockQty,
+        }
+      }),
+    }
+  }
+
+  const handleToggleInStock = async (product: Product, checked: boolean) => {
+    if (!shopId) {
+      showMessage('Shop not found for current session.')
+      return
+    }
+
+    try {
+      setActionProductId(product.id)
+
+      const variantUpdates = product.variants.map((variant) => ({
+        id: variant.id,
+        stockQty: Math.max(0, Number(variant.stockQty || 0)),
+        inStock: checked ? Boolean(variant.inStock) : false,
+      }))
+
+      if (checked && variantUpdates.every((variant) => variant.stockQty <= 0) && variantUpdates.length > 0) {
+        variantUpdates[0] = {
+          ...variantUpdates[0],
+          stockQty: 1,
+          inStock: true,
+        }
+      }
+
+      const updatedProduct = await updateStock(shopId, product.id, variantUpdates)
+      setProducts((prev) => prev.map((item) => (item.id === product.id ? updatedProduct : item)))
+      showMessage(`Updated stock status for ${product.name}`)
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Unable to update stock.')
+    } finally {
+      setActionProductId(null)
+    }
+  }
+
+  const handleActivateProduct = async (product: Product, nextActive: boolean) => {
+    if (!shopId) {
+      showMessage('Shop not found for current session.')
+      return
+    }
+
+    try {
+      setActionProductId(product.id)
+      const updatedProduct = await updateProductApi(shopId, product.id, toUpsertPayload(product, nextActive))
+      setProducts((prev) => prev.map((item) => (item.id === product.id ? updatedProduct : item)))
+      showMessage(`${nextActive ? 'Activated' : 'Deactivated'} ${product.name}`)
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Unable to update product status.')
+    } finally {
+      setActionProductId(null)
+    }
+  }
 
   const columns: GridColDef[] = [
     {
@@ -172,9 +298,9 @@ const ProductsListPage = () => {
           size="small"
           checked={Boolean(params.row.inStock)}
           inputProps={{ 'aria-label': `toggle in stock for ${params.row.name}` }}
-          onChange={() => {
-            toggleProductInStock(params.row.id)
-            showMessage(`Updated stock status for ${params.row.name}`)
+          disabled={actionProductId === params.row.id}
+          onChange={(_, checked) => {
+            void handleToggleInStock(params.row as Product, checked)
           }}
         />
       ),
@@ -191,14 +317,14 @@ const ProductsListPage = () => {
           size="small"
           checked={Boolean(params.row.active)}
           inputProps={{ 'aria-label': `toggle active for ${params.row.name}` }}
+          disabled={actionProductId === params.row.id}
           onChange={() => {
             if (params.row.active) {
               setConfirmDeactivate({ id: params.row.id, name: params.row.name })
               return
             }
 
-            toggleProductActive(params.row.id)
-            showMessage(`Activated ${params.row.name}`)
+            void handleActivateProduct(params.row as Product, true)
           }}
         />
       ),
@@ -244,7 +370,7 @@ const ProductsListPage = () => {
     },
   ]
 
-  const viewProduct = viewProductId ? products.find((item) => item.id === viewProductId) : null
+  const viewProduct = viewProductId ? filteredProducts.find((item) => item.id === viewProductId) : null
   const activeProductsCount = products.filter((item) => item.active).length
   const lowStockCount = products.filter((item) => item.stockQty > 0 && item.stockQty <= 10).length
   const outOfStockCount = products.filter((item) => item.stockQty <= 0).length
@@ -265,10 +391,12 @@ const ProductsListPage = () => {
           ]}
         />
 
+        {pageError ? <Alert severity="error">{pageError}</Alert> : null}
+
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
           <Box sx={{ flex: 1, border: '1px solid rgba(15,23,42,0.08)', borderRadius: 2.5, p: 1.5, bgcolor: 'background.paper' }}>
             <Typography variant="caption" color="text.secondary">Total Products</Typography>
-            <Typography variant="h6">{products.length}</Typography>
+            <Typography variant="h6">{totalProducts}</Typography>
           </Box>
           <Box sx={{ flex: 1, border: '1px solid rgba(15,23,42,0.08)', borderRadius: 2.5, p: 1.5, bgcolor: 'background.paper' }}>
             <Typography variant="caption" color="text.secondary">Active</Typography>
@@ -401,15 +529,10 @@ const ProductsListPage = () => {
                 columns={columns}
                 disableRowSelectionOnClick
                 density="compact"
+                pagination
+                paginationModel={paginationModel}
+                onPaginationModelChange={setPaginationModel}
                 pageSizeOptions={[10, 25, 50]}
-                initialState={{
-                  pagination: {
-                    paginationModel: {
-                      page: 0,
-                      pageSize: 10,
-                    },
-                  },
-                }}
                 sx={{
                   border: 'none',
                   minWidth: 980,
@@ -432,8 +555,13 @@ const ProductsListPage = () => {
             return
           }
 
-          toggleProductActive(confirmDeactivate.id)
-          showMessage(`Deactivated ${confirmDeactivate.name}`)
+          const product = products.find((item) => item.id === confirmDeactivate.id)
+          if (!product) {
+            setConfirmDeactivate(null)
+            return
+          }
+
+          void handleActivateProduct(product, false)
           setConfirmDeactivate(null)
         }}
       />
@@ -450,12 +578,29 @@ const ProductsListPage = () => {
             return
           }
 
-          deleteProduct(confirmDelete.id)
-          showMessage(`Deleted ${confirmDelete.name}`)
-          setConfirmDelete(null)
-          if (viewProductId === confirmDelete.id) {
-            setViewProductId(null)
+          if (!shopId) {
+            showMessage('Shop not found for current session.')
+            setConfirmDelete(null)
+            return
           }
+
+          void (async () => {
+            try {
+              setActionProductId(confirmDelete.id)
+              await deleteProductApi(shopId, confirmDelete.id)
+              setProducts((prev) => prev.filter((item) => item.id !== confirmDelete.id))
+              setTotalProducts((prev) => Math.max(0, prev - 1))
+              showMessage(`Deleted ${confirmDelete.name}`)
+              if (viewProductId === confirmDelete.id) {
+                setViewProductId(null)
+              }
+            } catch (error) {
+              showMessage(error instanceof Error ? error.message : 'Unable to delete product.')
+            } finally {
+              setActionProductId(null)
+              setConfirmDelete(null)
+            }
+          })()
         }}
       />
 

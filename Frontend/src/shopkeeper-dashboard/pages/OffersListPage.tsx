@@ -3,6 +3,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import {
+  Alert,
   Box,
   Button,
   Container,
@@ -31,8 +32,10 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyStateCard from '../components/EmptyStateCard'
 import OfferStatusChip from '../components/OfferStatusChip'
 import PageHeader from '../components/PageHeader'
-import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import { deleteOffer as deleteOfferApi, getOffers, toggleOffer } from '../services/offerService'
+import type { Offer } from '../types/offer'
 import { deriveOfferStatus } from '../types/offer'
 import type { OfferScope, OfferStatus } from '../types/offer'
 
@@ -41,23 +44,45 @@ type ScopeFilter = 'ALL' | OfferScope
 
 const OffersListPage = () => {
   const navigate = useNavigate()
-  const { offers, toggleOfferEnabled, deleteOffer } = useShopkeeperStore()
+  const shopId = getShopkeeperShopId()
   const { showMessage } = useAppFeedback()
+  const [offers, setOffers] = useState<Offer[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('ALL')
   const [isLoading, setIsLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
+  const [actionOfferId, setActionOfferId] = useState<string | null>(null)
   const [confirmDisable, setConfirmDisable] = useState<{ id: string; name: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const [viewOfferId, setViewOfferId] = useState<string | null>(null)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    if (!shopId) {
+      setPageError('Shop not found for current session.')
       setIsLoading(false)
-    }, 380)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      const loadOffers = async () => {
+        try {
+          setPageError('')
+          setIsLoading(true)
+          const response = await getOffers(shopId, { limit: 100, offset: 0 })
+          setOffers(response.offers)
+        } catch (error) {
+          setPageError(error instanceof Error ? error.message : 'Unable to load offers.')
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
+      void loadOffers()
+    }, 280)
 
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [shopId])
 
   const offersWithStatus = useMemo(
     () => offers.map((offer) => ({ ...offer, status: deriveOfferStatus(offer) })),
@@ -156,14 +181,30 @@ const OffersListPage = () => {
           size="small"
           checked={Boolean(params.row.enabled)}
           inputProps={{ 'aria-label': `toggle offer ${params.row.name}` }}
-          onChange={() => {
+          disabled={actionOfferId === params.row.id}
+          onChange={(_, checked) => {
             if (params.row.enabled) {
               setConfirmDisable({ id: params.row.id, name: params.row.name })
               return
             }
 
-            toggleOfferEnabled(params.row.id)
-            showMessage(`Enabled ${params.row.name}`)
+            if (!shopId) {
+              showMessage('Shop not found for current session.')
+              return
+            }
+
+            void (async () => {
+              try {
+                setActionOfferId(params.row.id)
+                const updated = await toggleOffer(shopId, params.row.id, checked)
+                setOffers((prev) => prev.map((offer) => (offer.id === params.row.id ? updated : offer)))
+                showMessage(`${checked ? 'Enabled' : 'Disabled'} ${params.row.name}`)
+              } catch (error) {
+                showMessage(error instanceof Error ? error.message : 'Unable to toggle offer.')
+              } finally {
+                setActionOfferId(null)
+              }
+            })()
           }}
         />
       ),
@@ -222,6 +263,8 @@ const OffersListPage = () => {
             },
           ]}
         />
+
+        {pageError ? <Alert severity="error">{pageError}</Alert> : null}
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
           <Box sx={{ flex: 1, border: '1px solid rgba(15,23,42,0.08)', borderRadius: 2.5, p: 1.5, bgcolor: 'background.paper' }}>
@@ -376,9 +419,25 @@ const OffersListPage = () => {
             return
           }
 
-          toggleOfferEnabled(confirmDisable.id)
-          showMessage(`Disabled ${confirmDisable.name}`)
-          setConfirmDisable(null)
+          if (!shopId) {
+            showMessage('Shop not found for current session.')
+            setConfirmDisable(null)
+            return
+          }
+
+          void (async () => {
+            try {
+              setActionOfferId(confirmDisable.id)
+              const updated = await toggleOffer(shopId, confirmDisable.id, false)
+              setOffers((prev) => prev.map((offer) => (offer.id === confirmDisable.id ? updated : offer)))
+              showMessage(`Disabled ${confirmDisable.name}`)
+            } catch (error) {
+              showMessage(error instanceof Error ? error.message : 'Unable to disable offer.')
+            } finally {
+              setActionOfferId(null)
+              setConfirmDisable(null)
+            }
+          })()
         }}
       />
 
@@ -394,12 +453,28 @@ const OffersListPage = () => {
             return
           }
 
-          deleteOffer(confirmDelete.id)
-          showMessage(`Deleted ${confirmDelete.name}`)
-          setConfirmDelete(null)
-          if (viewOfferId === confirmDelete.id) {
-            setViewOfferId(null)
+          if (!shopId) {
+            showMessage('Shop not found for current session.')
+            setConfirmDelete(null)
+            return
           }
+
+          void (async () => {
+            try {
+              setActionOfferId(confirmDelete.id)
+              await deleteOfferApi(shopId, confirmDelete.id)
+              setOffers((prev) => prev.filter((offer) => offer.id !== confirmDelete.id))
+              showMessage(`Deleted ${confirmDelete.name}`)
+              if (viewOfferId === confirmDelete.id) {
+                setViewOfferId(null)
+              }
+            } catch (error) {
+              showMessage(error instanceof Error ? error.message : 'Unable to delete offer.')
+            } finally {
+              setActionOfferId(null)
+              setConfirmDelete(null)
+            }
+          })()
         }}
       />
 

@@ -2,6 +2,7 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -26,8 +27,9 @@ type ProductFormProps = {
   shopCategoryName: string
   subcategoryOptions: Subcategory[]
   submitLabel: string
-  onSubmit: (values: ProductFormValues) => void
+  onSubmit: (values: ProductFormValues) => Promise<void> | void
   onCancel: () => void
+  onImageUpload?: (files: File[]) => Promise<string[]>
 }
 
 type ProductFormErrors = {
@@ -57,9 +59,13 @@ const ProductForm = ({
   submitLabel,
   onSubmit,
   onCancel,
+  onImageUpload,
 }: ProductFormProps) => {
   const [values, setValues] = useState<ProductFormValues>(initialValues)
   const [errors, setErrors] = useState<ProductFormErrors>({ variantErrors: [] })
+  const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const validate = (): boolean => {
     const nextErrors: ProductFormErrors = {
@@ -104,10 +110,11 @@ const ProductForm = ({
   }
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []).map((file) => file.name)
+    const selectedFiles = Array.from(event.target.files ?? [])
+    setSelectedImageFiles(selectedFiles)
     setValues((prev) => ({
       ...prev,
-      images: selectedFiles,
+      images: selectedFiles.map((file) => file.name),
     }))
   }
 
@@ -143,15 +150,38 @@ const ProductForm = ({
     }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSubmitting) {
+      return
+    }
+
     if (!validate()) {
       return
     }
 
-    onSubmit({
-      ...values,
-      inStock: values.stockQty > 0 ? values.inStock : false,
-    })
+    try {
+      setSubmitError('')
+      setIsSubmitting(true)
+
+      let imageUrls = values.images
+      if (selectedImageFiles.length > 0) {
+        if (onImageUpload) {
+          imageUrls = await onImageUpload(selectedImageFiles)
+        } else {
+          imageUrls = selectedImageFiles.map((file) => URL.createObjectURL(file))
+        }
+      }
+
+      await onSubmit({
+        ...values,
+        images: imageUrls,
+        inStock: values.stockQty > 0 ? values.inStock : false,
+      })
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save product')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -311,6 +341,8 @@ const ProductForm = ({
         </CardContent>
       </Card>
 
+      {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+
       <Card>
         <CardContent>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
@@ -399,11 +431,11 @@ const ProductForm = ({
       </Card>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="flex-end">
-        <Button variant="outlined" color="inherit" onClick={onCancel}>
+        <Button variant="outlined" color="inherit" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={handleSave}>
-          {submitLabel}
+        <Button variant="contained" onClick={() => void handleSave()} disabled={isSubmitting}>
+          {isSubmitting ? 'Saving...' : submitLabel}
         </Button>
       </Stack>
     </Stack>

@@ -1,10 +1,12 @@
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Container,
   Dialog,
   DialogActions,
@@ -15,24 +17,110 @@ import {
   Typography,
 } from '@mui/material'
 import FileCopyIcon from '@mui/icons-material/FileCopy'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
-import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import { getPublicLink, updateSlug } from '../services/shopService'
+
+const slugRegex = /^[a-z0-9-]{3,50}$/
 
 const ShopLinkPage = () => {
-  const { shop, getPublicUrl } = useShopkeeperStore()
-  const { showMessage } = useAppFeedback()
+  const shopId = getShopkeeperShopId()
+  const { showMessage, showSuccess, showError } = useAppFeedback()
+  const [isLoading, setIsLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
+  const [publicUrl, setPublicUrl] = useState('')
+  const [savedSlug, setSavedSlug] = useState('')
+  const [slugInput, setSlugInput] = useState('')
+  const [isUpdatingSlug, setIsUpdatingSlug] = useState(false)
+  const [availabilityState, setAvailabilityState] = useState<'idle' | 'available' | 'taken'>('idle')
+  const [availabilityMessage, setAvailabilityMessage] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
 
-  const shopLink = getPublicUrl()
+  useEffect(() => {
+    if (!shopId) {
+      setPageError('Shop not found for current session.')
+      setIsLoading(false)
+      return
+    }
+
+    const loadPublicLink = async () => {
+      try {
+        setPageError('')
+        setIsLoading(true)
+        const data = await getPublicLink(shopId)
+        setPublicUrl(data.publicUrl)
+        setSavedSlug(data.slug)
+        setSlugInput(data.slug)
+      } catch (error) {
+        setPageError(error instanceof Error ? error.message : 'Unable to load shop link.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadPublicLink()
+  }, [shopId])
+
+  const slugError = useMemo(() => {
+    const normalized = slugInput.trim().toLowerCase()
+    if (!normalized) {
+      return 'Slug is required'
+    }
+
+    if (!slugRegex.test(normalized)) {
+      return 'Slug must be 3-50 chars using lowercase letters, numbers, or hyphens'
+    }
+
+    return ''
+  }, [slugInput])
+
+  const shopLink = publicUrl
 
   const handleCopy = async () => {
+    if (!shopLink) {
+      showMessage('Shop link not ready yet')
+      return
+    }
+
     try {
       await navigator.clipboard.writeText(shopLink)
-      showMessage('Copied')
+      showSuccess('Copied')
     } catch {
-      showMessage('Unable to copy. Please copy manually.')
+      showError('Unable to copy. Please copy manually.')
+    }
+  }
+
+  const handleUpdateSlug = async () => {
+    if (!shopId) {
+      showError('Shop not found for current session.')
+      return
+    }
+
+    const nextSlug = slugInput.trim().toLowerCase()
+    if (slugError) {
+      setAvailabilityState('taken')
+      setAvailabilityMessage(slugError)
+      return
+    }
+
+    try {
+      setIsUpdatingSlug(true)
+      const updated = await updateSlug(shopId, nextSlug)
+      setSavedSlug(updated.slug)
+      setSlugInput(updated.slug)
+      setPublicUrl(updated.publicUrl)
+      setAvailabilityState('available')
+      setAvailabilityMessage('Slug available and updated successfully')
+      showSuccess('Slug updated')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Slug is not available.'
+      setAvailabilityState('taken')
+      setAvailabilityMessage(message)
+      showError(message)
+    } finally {
+      setIsUpdatingSlug(false)
     }
   }
 
@@ -59,9 +147,20 @@ const ShopLinkPage = () => {
           ]}
         />
 
+        {pageError ? <Alert severity="error">{pageError}</Alert> : null}
+
         <Card sx={{ border: '1px solid rgba(15,23,42,0.08)' }}>
           <CardContent>
             <Stack spacing={2.2}>
+              {isLoading ? (
+                <Stack direction="row" spacing={1.25} alignItems="center">
+                  <CircularProgress size={18} />
+                  <Typography variant="body2" color="text.secondary">
+                    Loading shop link...
+                  </Typography>
+                </Stack>
+              ) : null}
+
               <Box
                 sx={{
                   borderRadius: 2,
@@ -84,8 +183,35 @@ const ShopLinkPage = () => {
               </Box>
 
               <Box>
-                <Typography sx={{ fontWeight: 600, mb: 0.75 }}>Slug</Typography>
-                <TextField fullWidth value={shop.slug} slotProps={{ htmlInput: { readOnly: true } }} />
+                <Typography sx={{ fontWeight: 600, mb: 0.75 }}>Custom Slug</Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    value={slugInput}
+                    onChange={(event) => {
+                      setSlugInput(event.target.value)
+                      setAvailabilityState('idle')
+                      setAvailabilityMessage('')
+                    }}
+                    error={Boolean(slugError) || availabilityState === 'taken'}
+                    helperText={slugError || availabilityMessage || '3-50 chars: lowercase letters, numbers, hyphens'}
+                    disabled={isLoading || isUpdatingSlug}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      void handleUpdateSlug()
+                    }}
+                    disabled={isLoading || isUpdatingSlug || !slugInput.trim() || slugInput.trim().toLowerCase() === savedSlug}
+                  >
+                    {isUpdatingSlug ? 'Checking...' : 'Check & Update'}
+                  </Button>
+                </Stack>
+                {availabilityState === 'available' ? (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    {availabilityMessage}
+                  </Alert>
+                ) : null}
               </Box>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>

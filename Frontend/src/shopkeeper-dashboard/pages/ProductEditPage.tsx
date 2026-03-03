@@ -1,23 +1,52 @@
-import { Alert, Button, Card, CardContent, Container, Stack, Typography } from '@mui/material'
-import { useMemo, useState } from 'react'
+import { Alert, Button, Card, CardContent, CircularProgress, Container, Stack, Typography } from '@mui/material'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import PageHeader from '../components/PageHeader'
 import ProductForm from '../components/ProductForm'
 import type { ProductFormValues } from '../components/ProductForm'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import { getProduct, updateProduct, uploadProductImage } from '../services/productService'
+import type { Product } from '../types/product'
 
 const ProductEditPage = () => {
   const { productId } = useParams<{ productId: string }>()
   const navigate = useNavigate()
-  const { getProductById, updateProduct, getShopCategory, getAvailableSubcategories } = useShopkeeperStore()
+  const { getShopCategory, getAvailableSubcategories } = useShopkeeperStore()
   const { showMessage } = useAppFeedback()
+  const shopId = getShopkeeperShopId()
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false)
+  const [product, setProduct] = useState<Product | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
 
-  const product = useMemo(() => (productId ? getProductById(productId) : undefined), [getProductById, productId])
   const shopCategory = getShopCategory()
   const availableSubcategories = getAvailableSubcategories()
+
+  useEffect(() => {
+    const loadProduct = async () => {
+      if (!shopId || !productId) {
+        setPageError('Invalid product request.')
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        setPageError('')
+        setIsLoading(true)
+        const response = await getProduct(shopId, productId)
+        setProduct(response)
+      } catch (error) {
+        setPageError(error instanceof Error ? error.message : 'Unable to load product.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadProduct()
+  }, [productId, shopId])
 
   const selectedSubcategory = useMemo(() => {
     if (!product) {
@@ -31,11 +60,33 @@ const ProductEditPage = () => {
     )
   }, [availableSubcategories, product])
 
+  const handleImageUpload = async (files: File[]) => {
+    if (!shopId) {
+      throw new Error('Shop not found for current session.')
+    }
+
+    return Promise.all(files.map((file) => uploadProductImage(shopId, file)))
+  }
+
+  if (isLoading) {
+    return (
+      <Container maxWidth="md" sx={{ py: 3 }}>
+        <Stack spacing={2.5} alignItems="center">
+          <CircularProgress size={24} />
+          <Typography variant="body2" color="text.secondary">
+            Loading product details...
+          </Typography>
+        </Stack>
+      </Container>
+    )
+  }
+
   if (!productId || !product) {
     return (
       <Container maxWidth="md" sx={{ py: 3 }}>
         <Stack spacing={2.5}>
           <PageHeader title="Product not found" subtitle="The requested product ID is invalid or no longer exists." />
+          {pageError ? <Alert severity="error">{pageError}</Alert> : null}
           <Card>
             <CardContent>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -67,12 +118,43 @@ const ProductEditPage = () => {
     variants: product.variants,
   }
 
-  const handleSubmit = (values: ProductFormValues) => {
-    updateProduct(product.id, values)
+  const handleSubmit = async (values: ProductFormValues) => {
+    if (!shopId) {
+      throw new Error('Shop not found for current session.')
+    }
+
+    if (!product.categoryId) {
+      throw new Error('Unable to resolve product category.')
+    }
+
+    const variants = values.variants.map((variant, index) => {
+      const fallbackQty = index === 0 ? Number(values.stockQty || 0) : 0
+      const stockQty = Math.max(0, Number(variant.stockQty ?? fallbackQty))
+      const inStock = Boolean(values.inStock && variant.inStock && stockQty > 0)
+
+      return {
+        id: variant.id,
+        label: variant.label,
+        price: Number(variant.price),
+        mrp: Number(variant.mrp),
+        inStock,
+        stockQty,
+      }
+    })
+
+    await updateProduct(shopId, product.id, {
+      name: values.name,
+      description: values.description,
+      categoryId: product.categoryId,
+      categoryName: product.category,
+      subcategoryName: values.subcategory,
+      images: values.images,
+      active: values.active,
+      variants,
+    })
+
     showMessage('Product updated successfully')
-    window.setTimeout(() => {
-      navigate('/shop/products')
-    }, 450)
+    navigate('/shop/products')
   }
 
   return (
@@ -80,6 +162,7 @@ const ProductEditPage = () => {
       <Stack spacing={3}>
         <PageHeader title="Edit Product" subtitle="Update product details and variants" />
         <Alert severity="info">Editing: {product.name}</Alert>
+        {pageError ? <Alert severity="error">{pageError}</Alert> : null}
         <ProductForm
           initialValues={initialValues}
           shopCategoryName={shopCategory.name}
@@ -87,6 +170,7 @@ const ProductEditPage = () => {
           submitLabel="Save Changes"
           onSubmit={handleSubmit}
           onCancel={() => setConfirmDiscardOpen(true)}
+          onImageUpload={handleImageUpload}
         />
       </Stack>
 

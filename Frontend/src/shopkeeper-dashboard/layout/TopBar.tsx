@@ -2,7 +2,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import MenuIcon from '@mui/icons-material/Menu'
 import { AppBar, Box, Button, IconButton, Toolbar, Typography } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { logoutDemo } from '../shared/auth/authStore'
+import { logoutShopkeeper } from '../shared/auth/authStore'
 
 type TopBarProps = {
   onMenuClick: () => void
@@ -37,7 +37,7 @@ const TopBar = ({ onMenuClick, showMenuButton }: TopBarProps) => {
           : (titleMap[pathname] ?? 'Shopkeeper')
 
   const handleLogout = () => {
-    logoutDemo()
+    logoutShopkeeper()
     navigate('/login', { replace: true })
   }
 

@@ -1,25 +1,79 @@
-import { Alert, Button, Card, CardContent, Container, Stack, Typography } from '@mui/material'
-import { useMemo, useState } from 'react'
+import { Alert, Button, Card, CardContent, Container, Skeleton, Stack, Typography } from '@mui/material'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { mockCategories } from '../data/mockCategories'
 import ConfirmDialog from '../components/ConfirmDialog'
 import OfferForm from '../components/OfferForm'
 import type { OfferFormValues } from '../components/OfferForm'
 import PageHeader from '../components/PageHeader'
-import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import {
+  getOffer,
+  getOfferCategories,
+  getOfferProducts,
+  toggleOffer,
+  updateOffer,
+} from '../services/offerService'
+import type { Offer } from '../types/offer'
 
 const OfferEditPage = () => {
   const { offerId } = useParams<{ offerId: string }>()
   const navigate = useNavigate()
-  const { getOfferById, updateOffer, toggleOfferEnabled, products } = useShopkeeperStore()
+  const shopId = getShopkeeperShopId()
   const { showMessage } = useAppFeedback()
   const [confirmDisableOpen, setConfirmDisableOpen] = useState(false)
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false)
+  const [offer, setOffer] = useState<Offer | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([])
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
 
-  const offer = useMemo(() => (offerId ? getOfferById(offerId) : undefined), [getOfferById, offerId])
+  useEffect(() => {
+    if (!offerId || !shopId) {
+      setIsLoading(false)
+      setPageError('Offer or shop not found for current session.')
+      return
+    }
 
-  if (!offerId || !offer) {
+    const loadData = async () => {
+      try {
+        setPageError('')
+        setIsLoading(true)
+        const [fetchedOffer, categoryOptions, productOptions] = await Promise.all([
+          getOffer(shopId, offerId),
+          getOfferCategories(shopId),
+          getOfferProducts(shopId),
+        ])
+        setOffer(fetchedOffer)
+        setCategories(categoryOptions)
+        setProducts(productOptions)
+      } catch (error) {
+        setOffer(null)
+        setPageError(error instanceof Error ? error.message : 'Unable to load offer.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadData()
+  }, [offerId, shopId])
+
+  const notFound = useMemo(() => !isLoading && (!offerId || !offer || !shopId), [isLoading, offerId, offer, shopId])
+
+  if (isLoading) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 3 }}>
+        <Stack spacing={2.5}>
+          <PageHeader title="Edit Offer" subtitle="Loading offer details..." />
+          <Skeleton variant="rounded" height={80} />
+          <Skeleton variant="rounded" height={420} />
+        </Stack>
+      </Container>
+    )
+  }
+
+  if (notFound) {
     return (
       <Container maxWidth="md" sx={{ py: 3 }}>
         <Stack spacing={2.5}>
@@ -27,7 +81,7 @@ const OfferEditPage = () => {
           <Card>
             <CardContent>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                We could not locate this offer in the current dataset.
+                {pageError || 'We could not locate this offer in the current dataset.'}
               </Typography>
               <Button variant="outlined" onClick={() => navigate('/shop/offers')}>
                 Back to Offers
@@ -39,28 +93,32 @@ const OfferEditPage = () => {
     )
   }
 
+  const currentOffer = offer as Offer
+
   const initialValues: OfferFormValues = {
-    name: offer.name,
-    type: offer.type,
-    value: offer.value,
-    scope: offer.scope,
-    categoryIds: offer.categoryIds ?? [],
-    productIds: offer.productIds ?? [],
-    startsAt: offer.startsAt,
-    endsAt: offer.endsAt,
-    enabled: offer.enabled,
+    name: currentOffer.name,
+    type: currentOffer.type,
+    value: currentOffer.value,
+    scope: currentOffer.scope,
+    categoryIds: currentOffer.categoryIds ?? [],
+    productIds: currentOffer.productIds ?? [],
+    startsAt: currentOffer.startsAt,
+    endsAt: currentOffer.endsAt,
+    enabled: currentOffer.enabled,
   }
 
-  const handleSubmit = (values: OfferFormValues) => {
-    updateOffer(offer.id, values)
+  const handleSubmit = async (values: OfferFormValues) => {
+    if (!shopId) {
+      throw new Error('Shop not found for current session.')
+    }
+
+    await updateOffer(shopId, currentOffer.id, values)
     showMessage('Offer updated successfully')
-    window.setTimeout(() => {
-      navigate('/shop/offers')
-    }, 450)
+    navigate('/shop/offers')
   }
 
   const handleDisable = () => {
-    if (!offer.enabled) {
+    if (!currentOffer.enabled) {
       return
     }
     setConfirmDisableOpen(true)
@@ -70,11 +128,12 @@ const OfferEditPage = () => {
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Stack spacing={3}>
         <PageHeader title="Edit Offer" subtitle="Update offer details and schedule" />
-        <Alert severity="info">Editing: {offer.name}</Alert>
+        <Alert severity="info">Editing: {currentOffer.name}</Alert>
+        {pageError ? <Alert severity="error">{pageError}</Alert> : null}
         <OfferForm
           initialValues={initialValues}
           products={products}
-          categories={mockCategories}
+          categories={categories}
           submitLabel="Save Changes"
           onSubmit={handleSubmit}
           onCancel={() => setConfirmDiscardOpen(true)}
@@ -85,14 +144,28 @@ const OfferEditPage = () => {
       <ConfirmDialog
         open={confirmDisableOpen}
         title="Disable offer?"
-        description={`This will disable ${offer.name} immediately.`}
+        description={`This will disable ${currentOffer.name} immediately.`}
         confirmText="Disable"
         confirmColor="error"
         onCancel={() => setConfirmDisableOpen(false)}
         onConfirm={() => {
-          toggleOfferEnabled(offer.id)
-          showMessage('Offer disabled')
-          setConfirmDisableOpen(false)
+          if (!shopId) {
+            showMessage('Shop not found for current session.')
+            setConfirmDisableOpen(false)
+            return
+          }
+
+          void (async () => {
+            try {
+              const updated = await toggleOffer(shopId, currentOffer.id, false)
+              setOffer(updated)
+              showMessage('Offer disabled')
+            } catch (error) {
+              showMessage(error instanceof Error ? error.message : 'Unable to disable offer.')
+            } finally {
+              setConfirmDisableOpen(false)
+            }
+          })()
         }}
       />
 

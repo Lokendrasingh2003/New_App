@@ -1,8 +1,10 @@
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Container,
   FormControl,
   FormControlLabel,
@@ -14,9 +16,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import axios from 'axios'
 import ConfirmDialog from '../components/ConfirmDialog'
 import PageHeader from '../components/PageHeader'
+import { useShopkeeper } from '../shared/hooks/useShopkeeper'
 import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
 import type { DeliveryPayer } from '../types/shop'
@@ -25,14 +29,20 @@ type SettingsErrors = {
   shopName?: string
   phone?: string
   pincode?: string
+  open?: string
+  close?: string
   serviceRadiusKm?: string
 }
 
+const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
+
 const SettingsPage = () => {
-  const { shop, updateShopSettings, resetAllDemoData } = useShopkeeperStore()
+  const { shop, resetAllDemoData } = useShopkeeperStore()
+  const { shopSettings, isLoadingShop, isSavingShop, shopError, saveShopSettings } = useShopkeeper()
   const { showMessage } = useAppFeedback()
   const [confirmResetOpen, setConfirmResetOpen] = useState(false)
   const [errors, setErrors] = useState<SettingsErrors>({})
+  const [saveError, setSaveError] = useState('')
   const [form, setForm] = useState({
     shopName: shop.shopName,
     ownerName: shop.ownerName ?? '',
@@ -48,11 +58,29 @@ const SettingsPage = () => {
     serviceRadiusKm: shop.delivery.serviceRadiusKm,
   })
 
+  useEffect(() => {
+    setForm({
+      shopName: shopSettings.shopName,
+      ownerName: shopSettings.ownerName ?? '',
+      phone: shopSettings.phone,
+      city: shopSettings.city,
+      addressLine1: shopSettings.addressLine1,
+      area: shopSettings.area,
+      pincode: shopSettings.pincode,
+      open: shopSettings.businessHours.open,
+      close: shopSettings.businessHours.close,
+      payer: shopSettings.delivery.payer,
+      chargeAmount: Number(shopSettings.delivery.chargeAmount || 0),
+      serviceRadiusKm: Number(shopSettings.delivery.serviceRadiusKm || 0),
+    })
+  }, [shopSettings])
+
   const validate = () => {
     const nextErrors: SettingsErrors = {}
 
-    if (!form.shopName.trim()) {
-      nextErrors.shopName = 'Shop name is required'
+    const trimmedName = form.shopName.trim()
+    if (trimmedName.length < 3 || trimmedName.length > 50) {
+      nextErrors.shopName = 'Shop name must be between 3 and 50 characters'
     }
 
     if (!/^\d{10}$/.test(form.phone)) {
@@ -63,39 +91,61 @@ const SettingsPage = () => {
       nextErrors.pincode = 'Pincode must be 6 digits'
     }
 
-    if (form.serviceRadiusKm <= 0) {
-      nextErrors.serviceRadiusKm = 'Service radius must be greater than 0'
+    if (form.serviceRadiusKm < 1 || form.serviceRadiusKm > 50) {
+      nextErrors.serviceRadiusKm = 'Service radius must be between 1 and 50 km'
+    }
+
+    if (!timeRegex.test(form.open)) {
+      nextErrors.open = 'Open time must be valid HH:mm format'
+    }
+
+    if (!timeRegex.test(form.close)) {
+      nextErrors.close = 'Close time must be valid HH:mm format'
     }
 
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSavingShop) {
+      return
+    }
+
+    setSaveError('')
+
     if (!validate()) {
       return
     }
 
-    updateShopSettings({
-      shopName: form.shopName,
-      ownerName: form.ownerName || undefined,
-      phone: form.phone,
-      city: form.city,
-      addressLine1: form.addressLine1,
-      area: form.area,
-      pincode: form.pincode,
-      delivery: {
-        payer: form.payer,
-        chargeAmount: Number(form.chargeAmount),
-        serviceRadiusKm: Number(form.serviceRadiusKm),
-      },
-      businessHours: {
-        open: form.open,
-        close: form.close,
-      },
-    })
+    try {
+      await saveShopSettings({
+        shopName: form.shopName.trim(),
+        ownerName: form.ownerName.trim(),
+        phone: form.phone,
+        city: form.city.trim(),
+        addressLine1: form.addressLine1.trim(),
+        area: form.area.trim(),
+        pincode: form.pincode,
+        delivery: {
+          payer: form.payer,
+          chargeAmount: Number(form.chargeAmount),
+          serviceRadiusKm: Number(form.serviceRadiusKm),
+        },
+        businessHours: {
+          open: form.open,
+          close: form.close,
+        },
+      })
 
-    showMessage('Settings saved')
+      showMessage('Settings saved successfully')
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        setSaveError(error.response?.data?.error?.message || error.response?.data?.message || 'Unable to save settings')
+      } else {
+        setSaveError(error instanceof Error ? error.message : 'Unable to save settings')
+      }
+    }
   }
 
   return (
@@ -106,13 +156,31 @@ const SettingsPage = () => {
           subtitle="Configure your shop preferences and profile"
           actions={[
             {
-              label: 'Save',
-              onClick: handleSave,
+              label: isSavingShop ? 'Saving...' : 'Save',
+              onClick: () => {
+                void handleSave()
+              },
               variant: 'contained',
               color: 'primary',
             },
           ]}
         />
+
+        {isLoadingShop ? (
+          <Card sx={{ border: '1px solid rgba(15,23,42,0.08)' }}>
+            <CardContent>
+              <Stack direction="row" spacing={1.25} alignItems="center">
+                <CircularProgress size={20} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading shop settings...
+                </Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {shopError ? <Alert severity="error">{shopError}</Alert> : null}
+        {saveError ? <Alert severity="error">{saveError}</Alert> : null}
 
         <Box
           sx={{
@@ -214,6 +282,8 @@ const SettingsPage = () => {
                   label="Open"
                   value={form.open}
                   onChange={(event) => setForm((prev) => ({ ...prev, open: event.target.value }))}
+                  error={Boolean(errors.open)}
+                  helperText={errors.open}
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
@@ -224,6 +294,8 @@ const SettingsPage = () => {
                   label="Close"
                   value={form.close}
                   onChange={(event) => setForm((prev) => ({ ...prev, close: event.target.value }))}
+                  error={Boolean(errors.close)}
+                  helperText={errors.close}
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
@@ -285,7 +357,7 @@ const SettingsPage = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Restore orders, products, offers, shop settings, and subcategories back to the initial demo state.
             </Typography>
-            <Button variant="outlined" color="error" onClick={() => setConfirmResetOpen(true)}>
+            <Button variant="outlined" color="error" onClick={() => setConfirmResetOpen(true)} disabled={isSavingShop}>
               Reset Demo Data
             </Button>
           </CardContent>

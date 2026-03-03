@@ -1,4 +1,5 @@
 import {
+  Alert,
   Autocomplete,
   Button,
   Card,
@@ -16,7 +17,6 @@ import {
 } from '@mui/material'
 import { useMemo, useState } from 'react'
 import type { Offer, OfferScope, OfferType } from '../types/offer'
-import type { Product } from '../types/product'
 
 export type OfferFormValues = Omit<Offer, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -25,12 +25,17 @@ type CategoryOption = {
   name: string
 }
 
+type ProductOption = {
+  id: string
+  name: string
+}
+
 type OfferFormProps = {
   initialValues: OfferFormValues
-  products: Product[]
+  products: ProductOption[]
   categories: CategoryOption[]
   submitLabel: string
-  onSubmit: (values: OfferFormValues) => void
+  onSubmit: (values: OfferFormValues) => Promise<void> | void
   onCancel: () => void
   onDisable?: () => void
 }
@@ -63,6 +68,8 @@ const OfferForm = ({
 }: OfferFormProps) => {
   const [values, setValues] = useState<OfferFormValues>(initialValues)
   const [errors, setErrors] = useState<OfferFormErrors>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const selectedCategoryOptions = useMemo(
     () => categories.filter((item) => values.categoryIds?.includes(item.id)),
@@ -85,6 +92,14 @@ const OfferForm = ({
       nextErrors.value = 'Offer value must be greater than 0'
     }
 
+    if (values.type === 'PERCENT' && (values.value < 1 || values.value > 100)) {
+      nextErrors.value = 'Percent value must be between 1 and 100'
+    }
+
+    if (values.type === 'FLAT' && values.value <= 0) {
+      nextErrors.value = 'Flat value must be greater than 0'
+    }
+
     const startTime = new Date(values.startsAt).getTime()
     const endTime = new Date(values.endsAt).getTime()
     if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime <= startTime) {
@@ -104,12 +119,24 @@ const OfferForm = ({
     return Object.keys(nextErrors).length === 0
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSubmitting) {
+      return
+    }
+
     if (!validate()) {
       return
     }
 
-    onSubmit(values)
+    try {
+      setSubmitError('')
+      setIsSubmitting(true)
+      await onSubmit(values)
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save offer')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleScopeChange = (scope: OfferScope) => {
@@ -270,17 +297,19 @@ const OfferForm = ({
         </CardContent>
       </Card>
 
+      {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="flex-end">
         {onDisable && (
-          <Button variant="outlined" color="error" onClick={onDisable}>
+          <Button variant="outlined" color="error" onClick={onDisable} disabled={isSubmitting}>
             Disable Offer
           </Button>
         )}
-        <Button variant="outlined" color="inherit" onClick={onCancel}>
+        <Button variant="outlined" color="inherit" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={handleSave}>
-          {submitLabel}
+        <Button variant="contained" onClick={() => void handleSave()} disabled={isSubmitting}>
+          {isSubmitting ? 'Saving...' : submitLabel}
         </Button>
       </Stack>
     </Stack>

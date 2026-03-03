@@ -1,10 +1,12 @@
 import DownloadIcon from '@mui/icons-material/Download'
 import PrintIcon from '@mui/icons-material/Print'
 import {
+  Alert,
   Box,
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Container,
   FormControlLabel,
   MenuItem,
@@ -14,10 +16,12 @@ import {
   Typography,
 } from '@mui/material'
 import { useMemo, useRef, useState } from 'react'
-import { QRCodeCanvas } from 'qrcode.react'
+import { useEffect } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import PageHeader from '../components/PageHeader'
-import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import { getQRCode } from '../services/shopService'
 
 type QrSizeOption = 'small' | 'medium' | 'large'
 
@@ -28,52 +32,102 @@ const sizeMap: Record<QrSizeOption, number> = {
 }
 
 const QrCodePage = () => {
-  const { shop, getPublicUrl } = useShopkeeperStore()
-  const { showMessage } = useAppFeedback()
+  const shopId = getShopkeeperShopId()
+  const { showSuccess, showError } = useAppFeedback()
+  const [isLoading, setIsLoading] = useState(true)
+  const [pageError, setPageError] = useState('')
+  const [shopLink, setShopLink] = useState('')
+  const [qrCodeImage, setQrCodeImage] = useState('')
+  const [slug, setSlug] = useState('shop')
   const [qrSize, setQrSize] = useState<QrSizeOption>('medium')
   const [includeShopName, setIncludeShopName] = useState(true)
-  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const qrSvgWrapRef = useRef<HTMLDivElement | null>(null)
 
-  const qrValue = getPublicUrl()
-  const qrPixels = useMemo(() => sizeMap[qrSize], [qrSize])
-
-  const handleDownload = () => {
-    const canvas = qrCanvasRef.current
-    if (!canvas) {
-      showMessage('QR not ready yet')
+  useEffect(() => {
+    if (!shopId) {
+      setPageError('Shop not found for current session.')
+      setIsLoading(false)
       return
     }
 
-    const dataUrl = canvas.toDataURL('image/png')
+    const loadQrCode = async () => {
+      try {
+        setPageError('')
+        setIsLoading(true)
+        const data = await getQRCode(shopId)
+        setShopLink(data.shopLink)
+        setQrCodeImage(data.qrCodeImage)
+
+        const linkSlug = data.shopLink.split('/').filter(Boolean).pop()
+        if (linkSlug) {
+          setSlug(linkSlug)
+        }
+      } catch (error) {
+        setPageError(error instanceof Error ? error.message : 'Unable to load QR code.')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadQrCode()
+  }, [shopId])
+
+  const qrValue = shopLink
+  const qrPixels = useMemo(() => sizeMap[qrSize], [qrSize])
+
+  const handleDownloadPng = () => {
+    if (!qrCodeImage) {
+      showError('QR not ready yet')
+      return
+    }
+
     const anchor = document.createElement('a')
-    anchor.href = dataUrl
-    anchor.download = `${shop.slug}-qr.png`
+    anchor.href = qrCodeImage
+    anchor.download = `${slug}-qr.png`
     anchor.click()
-    showMessage('QR downloaded')
+    showSuccess('PNG downloaded')
+  }
+
+  const handleDownloadSvg = () => {
+    const wrapper = qrSvgWrapRef.current
+    const svgElement = wrapper?.querySelector('svg')
+    if (!svgElement) {
+      showError('QR not ready yet')
+      return
+    }
+
+    const svgMarkup = svgElement.outerHTML
+    const blob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${slug}-qr.svg`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    showSuccess('SVG downloaded')
   }
 
   const handlePrint = () => {
-    const canvas = qrCanvasRef.current
-    if (!canvas) {
-      showMessage('QR not ready yet')
+    if (!qrCodeImage) {
+      showError('QR not ready yet')
       return
     }
 
-    const dataUrl = canvas.toDataURL('image/png')
     const printWindow = window.open('', '_blank', 'width=700,height=800')
     if (!printWindow) {
-      showMessage('Unable to open print window')
+      showError('Unable to open print window')
       return
     }
 
-    const heading = includeShopName ? `<h2 style="margin-bottom:16px;">${shop.shopName}</h2>` : ''
+    const heading = includeShopName ? `<h2 style="margin-bottom:16px;">${slug}</h2>` : ''
     printWindow.document.write(`
       <html>
         <head><title>Print QR</title></head>
         <body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Arial,sans-serif;">
           <div style="text-align:center;">
             ${heading}
-            <img src="${dataUrl}" alt="Shop QR" />
+            <img src="${qrCodeImage}" alt="Shop QR" />
             <p style="margin-top:12px;color:#555;">${qrValue}</p>
           </div>
         </body>
@@ -82,7 +136,7 @@ const QrCodePage = () => {
     printWindow.document.close()
     printWindow.focus()
     printWindow.print()
-    showMessage('Print started')
+    showSuccess('Print started')
   }
 
   return (
@@ -94,7 +148,13 @@ const QrCodePage = () => {
           actions={[
             {
               label: 'Download PNG',
-              onClick: handleDownload,
+              onClick: handleDownloadPng,
+              variant: 'outlined',
+              startIcon: <DownloadIcon />,
+            },
+            {
+              label: 'Download SVG',
+              onClick: handleDownloadSvg,
               variant: 'outlined',
               startIcon: <DownloadIcon />,
             },
@@ -108,12 +168,22 @@ const QrCodePage = () => {
           ]}
         />
 
+        {pageError ? <Alert severity="error">{pageError}</Alert> : null}
+
         <Card id="qr-preview-card" sx={{ border: '1px solid rgba(15,23,42,0.08)' }}>
           <CardContent>
             <Typography sx={{ fontWeight: 700, mb: 0.5 }}>Your Shop QR Code</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Customers can scan this QR code to visit your shop page.
             </Typography>
+            {isLoading ? (
+              <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 2 }}>
+                <CircularProgress size={18} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading QR code...
+                </Typography>
+              </Stack>
+            ) : null}
             <Box
               sx={{
                 backgroundColor: '#F8FAFC',
@@ -128,20 +198,14 @@ const QrCodePage = () => {
                 minHeight: 340,
               }}
             >
-              <QRCodeCanvas
-                id="shop-qr-canvas"
-                value={qrValue}
-                size={qrPixels}
-                level="H"
-                includeMargin
-                ref={(node) => {
-                  qrCanvasRef.current = node
-                }}
-              />
-              {includeShopName && <Typography sx={{ fontWeight: 600 }}>{shop.shopName}</Typography>}
+              {qrCodeImage ? <Box component="img" src={qrCodeImage} alt="Shop QR" sx={{ width: qrPixels, height: qrPixels }} /> : null}
+              {includeShopName && <Typography sx={{ fontWeight: 600 }}>{slug}</Typography>}
               <Typography variant="body2" color="text.secondary">
                 {qrValue}
               </Typography>
+              <Box ref={qrSvgWrapRef} sx={{ display: 'none' }}>
+                <QRCodeSVG value={qrValue || ' '} size={qrPixels} level="H" includeMargin />
+              </Box>
             </Box>
           </CardContent>
         </Card>
@@ -170,8 +234,11 @@ const QrCodePage = () => {
             </Stack>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2.5 }}>
-              <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownload}>
+              <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadPng}>
                 Download PNG
+              </Button>
+              <Button variant="outlined" startIcon={<DownloadIcon />} onClick={handleDownloadSvg}>
+                Download SVG
               </Button>
               <Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}>
                 Print

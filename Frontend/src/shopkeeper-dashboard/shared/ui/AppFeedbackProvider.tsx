@@ -1,7 +1,10 @@
-import { Snackbar } from '@mui/material'
-import { createContext, useContext, useMemo, useState } from 'react'
+import { Alert, Snackbar } from '@mui/material'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { subscribeFeedback, type FeedbackSeverity } from '../../../utils/feedbackBus'
 
 type AppFeedbackContextType = {
+  showSuccess: (message: string) => void
+  showError: (message: string) => void
   showMessage: (message: string) => void
 }
 
@@ -9,10 +12,31 @@ const AppFeedbackContext = createContext<AppFeedbackContextType | null>(null)
 
 export const AppFeedbackProvider = ({ children }: { children: React.ReactNode }) => {
   const [message, setMessage] = useState('')
+  const [severity, setSeverity] = useState<FeedbackSeverity>('info')
+
+  useEffect(() => {
+    const unsubscribe = subscribeFeedback((payload) => {
+      setMessage(payload.message)
+      setSeverity(payload.severity || 'info')
+    })
+
+    return () => unsubscribe()
+  }, [])
 
   const value = useMemo(
     () => ({
-      showMessage: (nextMessage: string) => setMessage(nextMessage),
+      showSuccess: (nextMessage: string) => {
+        setSeverity('success')
+        setMessage(nextMessage)
+      },
+      showError: (nextMessage: string) => {
+        setSeverity('error')
+        setMessage(nextMessage)
+      },
+      showMessage: (nextMessage: string) => {
+        setSeverity('info')
+        setMessage(nextMessage)
+      },
     }),
     [],
   )
@@ -22,11 +46,14 @@ export const AppFeedbackProvider = ({ children }: { children: React.ReactNode })
       {children}
       <Snackbar
         open={Boolean(message)}
-        autoHideDuration={2200}
+        autoHideDuration={2600}
         onClose={() => setMessage('')}
-        message={message}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+      >
+        <Alert onClose={() => setMessage('')} severity={severity} variant="filled" sx={{ width: '100%' }}>
+          {message}
+        </Alert>
+      </Snackbar>
     </AppFeedbackContext.Provider>
   )
 }

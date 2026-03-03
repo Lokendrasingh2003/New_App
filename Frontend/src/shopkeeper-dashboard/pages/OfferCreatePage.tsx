@@ -1,19 +1,21 @@
 import { Container } from '@mui/material'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import OfferForm from '../components/OfferForm'
 import type { OfferFormValues } from '../components/OfferForm'
 import PageHeader from '../components/PageHeader'
-import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
-import { mockCategories } from '../data/mockCategories'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+import { createOffer, getOfferCategories, getOfferProducts } from '../services/offerService'
 
 const OfferCreatePage = () => {
   const navigate = useNavigate()
-  const { createOffer, products } = useShopkeeperStore()
+  const shopId = getShopkeeperShopId()
   const { showMessage } = useAppFeedback()
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false)
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([])
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
 
   const now = new Date()
   const afterSevenDays = new Date(now)
@@ -31,12 +33,36 @@ const OfferCreatePage = () => {
     enabled: true,
   }
 
-  const handleSubmit = (values: OfferFormValues) => {
-    createOffer(values)
+  useEffect(() => {
+    if (!shopId) {
+      showMessage('Shop not found for current session.')
+      return
+    }
+
+    const loadOptions = async () => {
+      try {
+        const [categoryOptions, productOptions] = await Promise.all([
+          getOfferCategories(shopId),
+          getOfferProducts(shopId),
+        ])
+        setCategories(categoryOptions)
+        setProducts(productOptions)
+      } catch (error) {
+        showMessage(error instanceof Error ? error.message : 'Unable to load offer options.')
+      }
+    }
+
+    void loadOptions()
+  }, [shopId, showMessage])
+
+  const handleSubmit = async (values: OfferFormValues) => {
+    if (!shopId) {
+      throw new Error('Shop not found for current session.')
+    }
+
+    await createOffer(shopId, values)
     showMessage('Offer created successfully')
-    window.setTimeout(() => {
-      navigate('/shop/offers')
-    }, 450)
+    navigate('/shop/offers')
   }
 
   return (
@@ -45,7 +71,7 @@ const OfferCreatePage = () => {
       <OfferForm
         initialValues={initialValues}
         products={products}
-        categories={mockCategories}
+        categories={categories}
         submitLabel="Save Offer"
         onSubmit={handleSubmit}
         onCancel={() => setConfirmDiscardOpen(true)}

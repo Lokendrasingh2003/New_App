@@ -1,16 +1,23 @@
-import { Box, Button, Container, Grid, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, CircularProgress, Container, Grid, Skeleton, Stack, Typography } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import StorefrontIcon from '@mui/icons-material/Storefront'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import WarningIcon from '@mui/icons-material/Warning'
+import StarOutlineIcon from '@mui/icons-material/StarOutline'
+import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined'
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
+import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import PageHeader from '../components/PageHeader'
 import StatCard from '../components/StatCard'
 import StatusChip from '../components/StatusChip'
 import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
+import { getShopkeeperShopId } from '../shared/auth/authStore'
+import { getShopDashboard, getShopStats, getTodayStats, type ShopStatsSnapshot } from '../services/shopService'
 import type { OrderStatus } from '../types/order'
 
 const ORDER_STATUS_OPTIONS: OrderStatus[] = [
@@ -23,28 +30,88 @@ const ORDER_STATUS_OPTIONS: OrderStatus[] = [
   'CANCELLED',
 ]
 
+const EMPTY_STATS: ShopStatsSnapshot = {
+  totalOrders: 0,
+  totalEarnings: 0,
+  averageRating: 0,
+  reviewCount: 0,
+  totalProducts: 0,
+  totalCategories: 0,
+  activeOffers: 0,
+  todayOrders: 0,
+  todayEarnings: 0,
+}
+
 const DashboardPage = () => {
   const navigate = useNavigate()
+  const shopId = getShopkeeperShopId()
   const { orders } = useShopkeeperStore()
+  const [stats, setStats] = useState<ShopStatsSnapshot>(EMPTY_STATS)
+  const [isLoadingStats, setIsLoadingStats] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [statsError, setStatsError] = useState('')
 
-  // Calculate stats from mock data
-  const todayOrders = orders.filter((order) => {
-    const orderDate = new Date(order.createdAt)
-    const today = new Date()
-    return (
-      orderDate.getDate() === today.getDate() &&
-      orderDate.getMonth() === today.getMonth() &&
-      orderDate.getFullYear() === today.getFullYear()
-    )
-  })
+  const fetchDashboardStats = useCallback(
+    async (mode: 'initial' | 'refresh' | 'poll' = 'initial') => {
+      if (!shopId) {
+        setStatsError('Shop not found for current session.')
+        setIsLoadingStats(false)
+        return
+      }
 
-  const todayOrderCount = todayOrders.length
-  const todaySales = todayOrders.reduce((sum, order) => sum + order.total, 0)
+      if (mode === 'initial') {
+        setIsLoadingStats(true)
+      } else {
+        setIsRefreshing(true)
+      }
+
+      try {
+        setStatsError('')
+        const [statsData, dashboardData, todayData] = await Promise.all([
+          getShopStats(shopId),
+          getShopDashboard(shopId),
+          getTodayStats(shopId),
+        ])
+
+        setStats({
+          ...statsData,
+          totalOrders: Number(statsData.totalOrders || dashboardData.orderCount || 0),
+          totalEarnings: Number(statsData.totalEarnings || dashboardData.totalEarnings || 0),
+          totalProducts: Number(statsData.totalProducts || dashboardData.productCount || 0),
+          todayOrders: Number(todayData.todayOrders || statsData.todayOrders || 0),
+          todayEarnings: Number(todayData.todayEarnings || statsData.todayEarnings || 0),
+        })
+      } catch (error) {
+        setStatsError(error instanceof Error ? error.message : 'Unable to load dashboard stats.')
+      } finally {
+        setIsLoadingStats(false)
+        setIsRefreshing(false)
+      }
+    },
+    [shopId]
+  )
+
+  useEffect(() => {
+    void fetchDashboardStats('initial')
+  }, [fetchDashboardStats])
+
+  useEffect(() => {
+    if (!shopId) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      void fetchDashboardStats('poll')
+    }, 5 * 60 * 1000)
+
+    return () => window.clearInterval(timer)
+  }, [fetchDashboardStats, shopId])
+
+  const todayOrderCount = stats.todayOrders
+  const todaySales = stats.todayEarnings
 
   const pendingStatuses: OrderStatus[] = ['NEW', 'ACCEPTED', 'PREPARING', 'READY']
   const pendingOrderCount = orders.filter((order) => pendingStatuses.includes(order.status)).length
-
-  const lowStockItems = 8
 
   // DataGrid columns
   const columns: GridColDef[] = [
@@ -211,6 +278,14 @@ const DashboardPage = () => {
           subtitle="Monitor shop performance, active operations and quick actions in one place."
           actions={[
             {
+              label: isRefreshing ? 'Refreshing...' : 'Refresh',
+              onClick: () => {
+                void fetchDashboardStats('refresh')
+              },
+              variant: 'outlined',
+              startIcon: isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon />,
+            },
+            {
               label: 'Add Product',
               onClick: () => navigate('/shop/products'),
               variant: 'outlined',
@@ -223,6 +298,8 @@ const DashboardPage = () => {
             },
           ]}
         />
+
+        {statsError ? <Alert severity="error">{statsError}</Alert> : null}
 
         <Box
           sx={{
@@ -239,50 +316,86 @@ const DashboardPage = () => {
                 Today overview
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                You have {pendingOrderCount} active orders requiring attention. Keep catalog fresh and convert more orders.
+                You have {pendingOrderCount} active orders requiring attention. Auto refresh runs every 5 minutes.
               </Typography>
             </Grid>
             <Grid size={{ xs: 12, md: 5 }}>
               <Stack direction="row" spacing={2} justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Today's sales</Typography>
-                  <Typography variant="h6">₹{todaySales.toLocaleString('en-IN')}</Typography>
+                  {isLoadingStats ? <Skeleton variant="text" width={96} /> : <Typography variant="h6">₹{todaySales.toLocaleString('en-IN')}</Typography>}
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Today's orders</Typography>
-                  <Typography variant="h6">{todayOrderCount}</Typography>
+                  {isLoadingStats ? <Skeleton variant="text" width={64} /> : <Typography variant="h6">{todayOrderCount}</Typography>}
                 </Box>
               </Stack>
             </Grid>
           </Grid>
         </Box>
 
-        <Grid container spacing={2}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <StatCard title="Today Orders" value={todayOrderCount} helperText="Orders received today" icon={<ShoppingCartIcon />} />
+        {isLoadingStats ? (
+          <Grid container spacing={2}>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <Grid key={index} size={{ xs: 12, sm: 6, md: 3 }}>
+                <Box
+                  sx={{
+                    borderRadius: 2.5,
+                    border: '1px solid rgba(15,23,42,0.08)',
+                    p: 2,
+                    backgroundColor: 'background.paper',
+                  }}
+                >
+                  <Skeleton variant="text" width="55%" />
+                  <Skeleton variant="text" width="40%" height={42} />
+                  <Skeleton variant="text" width="70%" />
+                </Box>
+              </Grid>
+            ))}
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <StatCard
-              title="Today Sales"
-              value={`₹${todaySales.toLocaleString('en-IN')}`}
-              helperText="Revenue today"
-              icon={<TrendingUpIcon />}
-              trend={{ value: 12, direction: 'up' }}
-            />
+        ) : (
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard title="Total Orders" value={stats.totalOrders} helperText="All-time orders" icon={<ShoppingCartIcon />} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Total Earnings"
+                value={`₹${stats.totalEarnings.toLocaleString('en-IN')}`}
+                helperText="All-time revenue"
+                icon={<TrendingUpIcon />}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Average Rating"
+                value={Number(stats.averageRating || 0).toFixed(1)}
+                helperText="Verified rating"
+                icon={<StarOutlineIcon />}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard title="Review Count" value={stats.reviewCount} helperText="Published reviews" icon={<RateReviewOutlinedIcon />} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard title="Total Products" value={stats.totalProducts} helperText="Active products" icon={<Inventory2OutlinedIcon />} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard title="Active Offers" value={stats.activeOffers} helperText="Live discounts" icon={<LocalOfferOutlinedIcon />} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard title="Today's Orders" value={stats.todayOrders} helperText="Orders today" icon={<StorefrontIcon />} />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <StatCard
+                title="Today's Earnings"
+                value={`₹${stats.todayEarnings.toLocaleString('en-IN')}`}
+                helperText="Revenue today"
+                icon={<WarningIcon />}
+              />
+            </Grid>
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <StatCard title="Pending Orders" value={pendingOrderCount} helperText="Orders to process" icon={<StorefrontIcon />} />
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <StatCard
-              title="Low Stock Items"
-              value={lowStockItems}
-              helperText="Need replenishment"
-              icon={<WarningIcon />}
-              trend={{ value: 3, direction: 'down' }}
-            />
-          </Grid>
-        </Grid>
+        )}
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, lg: 8 }}>

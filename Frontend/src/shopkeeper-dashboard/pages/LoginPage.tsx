@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import {
   Alert,
@@ -13,8 +13,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { loginDemo } from '../shared/auth/authStore'
+import { isShopkeeperLoggedIn, loginShopkeeper } from '../shared/auth/authStore'
 import logoImage from '../../assets/logooo.png'
 
 const mobileRegex = /^\d{10}$/
@@ -24,6 +25,14 @@ const LoginPage = () => {
   const [mobile, setMobile] = useState('')
   const [password, setPassword] = useState('')
   const [submitAttempted, setSubmitAttempted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [apiError, setApiError] = useState('')
+
+  useEffect(() => {
+    if (isShopkeeperLoggedIn()) {
+      navigate('/shop/dashboard', { replace: true })
+    }
+  }, [navigate])
 
   const mobileError = useMemo(() => {
     if (!submitAttempted) {
@@ -41,8 +50,9 @@ const LoginPage = () => {
     return password.length >= 4 ? '' : 'Password must be at least 4 characters'
   }, [password, submitAttempted])
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setSubmitAttempted(true)
+    setApiError('')
 
     const isMobileValid = mobileRegex.test(mobile)
     const isPasswordValid = password.length >= 4
@@ -51,8 +61,21 @@ const LoginPage = () => {
       return
     }
 
-    loginDemo(mobile)
-    navigate('/shop/dashboard', { replace: true })
+    try {
+      setIsSubmitting(true)
+      await loginShopkeeper(mobile, password)
+      navigate('/shop/dashboard', { replace: true })
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        setApiError(error.response?.data?.error?.message || error.response?.data?.message || 'Unable to login. Please try again.')
+      } else if (error instanceof Error) {
+        setApiError(error.message)
+      } else {
+        setApiError('Unable to login. Please try again.')
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -94,7 +117,7 @@ const LoginPage = () => {
             <TextField
               label="Mobile Number"
               value={mobile}
-              onChange={(event) => setMobile(event.target.value)}
+              onChange={(event) => setMobile(event.target.value.replace(/\D/g, ''))}
               error={Boolean(mobileError)}
               helperText={mobileError || 'Enter 10-digit mobile number'}
               inputProps={{ maxLength: 10, inputMode: 'numeric' }}
@@ -114,11 +137,11 @@ const LoginPage = () => {
               fullWidth
             />
 
-            <Button variant="contained" size="large" onClick={handleLogin}>
-              Sign In
+            <Button variant="contained" size="large" onClick={handleLogin} disabled={isSubmitting}>
+              {isSubmitting ? 'Signing In...' : 'Sign In'}
             </Button>
 
-            <Alert severity="info">Demo access is enabled for this dashboard setup.</Alert>
+            {apiError ? <Alert severity="error">{apiError}</Alert> : null}
           </Stack>
         </CardContent>
       </Card>
