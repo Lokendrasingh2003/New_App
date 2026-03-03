@@ -392,6 +392,71 @@ const shopOrderSchemas = {
   }),
 };
 
+const shopkeeperPaymentSchemas = {
+  shopkeeperIdParam: Joi.object({
+    shopkeeperId: objectId.required(),
+  }),
+  paymentIdParam: Joi.object({
+    shopkeeperId: objectId.required(),
+    paymentId: objectId.required(),
+  }),
+  refundIdParam: Joi.object({
+    shopkeeperId: objectId.required(),
+    refundId: objectId.required(),
+  }),
+  paymentQuery: Joi.object({
+    status: Joi.string().valid('PENDING', 'SUCCESS', 'FAILED').optional(),
+    dateFrom: Joi.date().optional(),
+    dateTo: Joi.date().optional(),
+    search: Joi.string().trim().max(120).optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    offset: Joi.number().integer().min(0).optional(),
+  }),
+  paymentVerify: Joi.object({
+    transactionDetails: Joi.object({
+      transactionId: Joi.string().trim().min(3).max(120).optional(),
+      note: Joi.string().trim().max(500).allow('', null),
+    }).optional(),
+  }),
+  paymentBulkStatusUpdate: Joi.object({
+    paymentIds: Joi.array().items(objectId).min(1).required(),
+    status: Joi.string().valid('PENDING', 'SUCCESS', 'FAILED').required(),
+  }),
+  refundQuery: Joi.object({
+    status: Joi.string().valid('REQUESTED', 'PROCESSING', 'COMPLETED', 'FAILED').optional(),
+    dateFrom: Joi.date().optional(),
+    dateTo: Joi.date().optional(),
+    search: Joi.string().trim().max(120).optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    offset: Joi.number().integer().min(0).optional(),
+  }),
+  refundCreate: Joi.object({
+    paymentId: objectId.required(),
+    orderId: objectId.required(),
+    reason: Joi.string().trim().min(3).max(500).required(),
+    refundAmount: Joi.number().greater(0).required(),
+    refundMode: Joi.string().valid('BANK_TRANSFER', 'UPI', 'WALLET').required(),
+  }),
+  refundUpdate: Joi.object({
+    status: Joi.string().valid('REQUESTED', 'PROCESSING', 'COMPLETED', 'FAILED').required(),
+    note: Joi.string().trim().max(500).allow('', null),
+    bankDetails: Joi.object({
+      accountNumber: Joi.string().trim().pattern(/^\d{9,18}$/).optional(),
+      ifscCode: Joi.string().trim().uppercase().pattern(ifscRegex).optional(),
+      bankName: Joi.string().trim().min(2).max(120).optional(),
+    }).optional(),
+  }),
+  refundProcess: Joi.object({
+    bankDetails: Joi.object({
+      accountNumber: Joi.string().trim().pattern(/^\d{9,18}$/).required(),
+      ifscCode: Joi.string().trim().uppercase().pattern(ifscRegex).required(),
+      bankName: Joi.string().trim().min(2).max(120).required(),
+    }).required(),
+    transactionRef: Joi.string().trim().min(3).max(120).allow('', null),
+    note: Joi.string().trim().max(500).allow('', null),
+  }),
+};
+
 const adminCitySchemas = {
   createOrUpdate: Joi.object({
     name: Joi.string().trim().min(3).max(50).required(),
@@ -767,6 +832,7 @@ module.exports = {
   productManagementSchemas,
   offerSchemas,
   shopOrderSchemas,
+  shopkeeperPaymentSchemas,
   adminCitySchemas,
   adminCategorySchemas,
   adminShopSchemas,

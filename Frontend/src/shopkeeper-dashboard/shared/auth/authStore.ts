@@ -1,21 +1,6 @@
-import api from '../../../utils/axiosInstance'
+import { loginShopkeeperApi } from '../../services/authService'
 
 const SHOPKEEPER_AUTH_TOKEN_KEY = 'shopkeeper_auth_token'
-
-type ShopkeeperLoginResponse = {
-  success: boolean
-  data?: {
-    token?: string
-    refreshToken?: string
-    shopkeeper?: {
-      id: string
-      phone: string
-      shopId: string | null
-      status: string
-    }
-  }
-  message?: string
-}
 
 type TokenPayload = {
   sub?: string
@@ -62,15 +47,10 @@ export const getShopkeeperShopId = (): string | null => {
 }
 
 export const loginShopkeeper = async (phone: string, password: string): Promise<string> => {
-  const { data } = await api.post<ShopkeeperLoginResponse>('/api/shopkeeper/login', {
+  const token = await loginShopkeeperApi({
     phone,
     password,
   })
-
-  const token = data?.data?.token
-  if (!token) {
-    throw new Error(data?.message || 'Login failed. Please try again.')
-  }
 
   localStorage.setItem(SHOPKEEPER_AUTH_TOKEN_KEY, token)
   return token

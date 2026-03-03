@@ -13,6 +13,10 @@ import ProductCreatePage from '../pages/ProductCreatePage'
 import ProductEditPage from '../pages/ProductEditPage'
 import ProductsListPage from '../pages/ProductsListPage'
 import QrCodePage from '../pages/QrCodePage'
+import PaymentDetailsPage from '../pages/PaymentDetailsPage'
+import PaymentsPage from '../pages/PaymentsPage'
+import RefundDetailsPage from '../pages/RefundDetailsPage'
+import RefundsPage from '../pages/RefundsPage'
 import SettingsPage from '../pages/SettingsPage'
 import ShopLinkPage from '../pages/ShopLinkPage'
 import ShopLayout from '../layout/ShopLayout'
@@ -83,6 +87,22 @@ export const router = createBrowserRouter([
       {
         path: 'offers/:offerId/edit',
         element: withPageBoundary(<OfferEditPage />),
+      },
+      {
+        path: 'payments',
+        element: withPageBoundary(<PaymentsPage />),
+      },
+      {
+        path: 'payments/:paymentId',
+        element: withPageBoundary(<PaymentDetailsPage />),
+      },
+      {
+        path: 'refunds',
+        element: withPageBoundary(<RefundsPage />),
+      },
+      {
+        path: 'refunds/:refundId',
+        element: withPageBoundary(<RefundDetailsPage />),
       },
       {
         path: 'shop-link',

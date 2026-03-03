@@ -16,12 +16,14 @@ import {
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { isShopkeeperLoggedIn, loginShopkeeper } from '../shared/auth/authStore'
+import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
 import logoImage from '../../assets/logooo.png'
 
 const mobileRegex = /^\d{10}$/
 
 const LoginPage = () => {
   const navigate = useNavigate()
+  const { showSuccess, showError } = useAppFeedback()
   const [mobile, setMobile] = useState('')
   const [password, setPassword] = useState('')
   const [submitAttempted, setSubmitAttempted] = useState(false)
@@ -64,14 +66,20 @@ const LoginPage = () => {
     try {
       setIsSubmitting(true)
       await loginShopkeeper(mobile, password)
+      showSuccess('Login successful')
       navigate('/shop/dashboard', { replace: true })
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setApiError(error.response?.data?.error?.message || error.response?.data?.message || 'Unable to login. Please try again.')
+        const message = error.response?.data?.error?.message || error.response?.data?.message || 'Unable to login. Please try again.'
+        setApiError(message)
+        showError(message)
       } else if (error instanceof Error) {
         setApiError(error.message)
+        showError(error.message)
       } else {
-        setApiError('Unable to login. Please try again.')
+        const message = 'Unable to login. Please try again.'
+        setApiError(message)
+        showError(message)
       }
     } finally {
       setIsSubmitting(false)

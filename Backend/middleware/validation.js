@@ -11,6 +11,7 @@ const {
   productManagementSchemas,
   offerSchemas,
   shopOrderSchemas,
+  shopkeeperPaymentSchemas,
   adminCitySchemas,
   adminCategorySchemas,
   adminShopSchemas,
@@ -149,6 +150,26 @@ const validateShopOrderUpdate = () => validate(shopOrderSchemas.updateStatus);
 const validateShopOrderReject = () => validate(shopOrderSchemas.reject);
 
 const validateShopOrdersAnalyticsQuery = () => validate(shopOrderSchemas.analyticsQuery, 'query');
+
+const validateShopkeeperIdParam = () => validate(shopkeeperPaymentSchemas.shopkeeperIdParam, 'params');
+
+const validateShopkeeperPaymentIdParam = () => validate(shopkeeperPaymentSchemas.paymentIdParam, 'params');
+
+const validateShopkeeperRefundIdParam = () => validate(shopkeeperPaymentSchemas.refundIdParam, 'params');
+
+const validateShopkeeperPaymentQuery = () => validate(shopkeeperPaymentSchemas.paymentQuery, 'query');
+
+const validateShopkeeperPaymentVerify = () => validate(shopkeeperPaymentSchemas.paymentVerify);
+
+const validateShopkeeperPaymentBulkStatusUpdate = () => validate(shopkeeperPaymentSchemas.paymentBulkStatusUpdate);
+
+const validateShopkeeperRefundQuery = () => validate(shopkeeperPaymentSchemas.refundQuery, 'query');
+
+const validateShopkeeperRefundCreate = () => validate(shopkeeperPaymentSchemas.refundCreate);
+
+const validateShopkeeperRefundUpdate = () => validate(shopkeeperPaymentSchemas.refundUpdate);
+
+const validateShopkeeperRefundProcess = () => validate(shopkeeperPaymentSchemas.refundProcess);
 
 const validateAdminCityCreate = () => validate(adminCitySchemas.createOrUpdate);
 
@@ -334,6 +355,16 @@ module.exports = {
   validateShopOrderUpdate,
   validateShopOrderReject,
   validateShopOrdersAnalyticsQuery,
+  validateShopkeeperIdParam,
+  validateShopkeeperPaymentIdParam,
+  validateShopkeeperRefundIdParam,
+  validateShopkeeperPaymentQuery,
+  validateShopkeeperPaymentVerify,
+  validateShopkeeperPaymentBulkStatusUpdate,
+  validateShopkeeperRefundQuery,
+  validateShopkeeperRefundCreate,
+  validateShopkeeperRefundUpdate,
+  validateShopkeeperRefundProcess,
   validateAdminCityCreate,
   validateAdminCityUpdate,
   validateAdminCitiesListQuery,

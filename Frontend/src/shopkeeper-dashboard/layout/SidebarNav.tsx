@@ -3,8 +3,10 @@ import DiscountIcon from '@mui/icons-material/Discount'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
 import LinkIcon from '@mui/icons-material/Link'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
+import PaymentIcon from '@mui/icons-material/Payment'
 import PlaylistAddCheckCircleIcon from '@mui/icons-material/PlaylistAddCheckCircle'
 import QrCode2Icon from '@mui/icons-material/QrCode2'
+import CancelIcon from '@mui/icons-material/Cancel'
 import SettingsIcon from '@mui/icons-material/Settings'
 import { Box, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography } from '@mui/material'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -13,8 +15,10 @@ const navItems = [
   { label: 'Dashboard', path: '/shop/dashboard', icon: DashboardIcon },
   { label: 'Orders', path: '/shop/orders', icon: LocalShippingIcon },
   { label: 'Products', path: '/shop/products', icon: Inventory2Icon },
-  { label: 'Manage Subcategories', path: '/shop/subcategories', icon: PlaylistAddCheckCircleIcon },
   { label: 'Offers', path: '/shop/offers', icon: DiscountIcon },
+  { label: 'Payments', path: '/shop/payments', icon: PaymentIcon },
+  { label: 'Refunds', path: '/shop/refunds', icon: CancelIcon },
+  { label: 'Manage Subcategories', path: '/shop/subcategories', icon: PlaylistAddCheckCircleIcon },
   { label: 'Shop Link', path: '/shop/shop-link', icon: LinkIcon },
   { label: 'QR Code', path: '/shop/qr', icon: QrCode2Icon },
   { label: 'Settings', path: '/shop/settings', icon: SettingsIcon },
