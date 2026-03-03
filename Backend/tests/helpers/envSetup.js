@@ -1,0 +1,12 @@
+process.env.NODE_ENV = 'test';
+process.env.PORT = process.env.PORT || '5001';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
+process.env.USER_JWT_SECRET = process.env.USER_JWT_SECRET || 'test-user-jwt-secret';
+process.env.SHOPKEEPER_JWT_SECRET = process.env.SHOPKEEPER_JWT_SECRET || 'test-shopkeeper-jwt-secret';
+process.env.ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'test-admin-jwt-secret';
+process.env.USER_REFRESH_JWT_SECRET = process.env.USER_REFRESH_JWT_SECRET || 'test-user-refresh-secret';
+process.env.SHOPKEEPER_REFRESH_JWT_SECRET = process.env.SHOPKEEPER_REFRESH_JWT_SECRET || 'test-shopkeeper-refresh-secret';
+process.env.ADMIN_REFRESH_JWT_SECRET = process.env.ADMIN_REFRESH_JWT_SECRET || 'test-admin-refresh-secret';
+process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+process.env.API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000';
+process.env.MONGODB_URI = process.env.MONGO_URL || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cityconnect-test';
