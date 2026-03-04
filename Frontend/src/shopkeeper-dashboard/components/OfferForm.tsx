@@ -107,7 +107,7 @@ const OfferForm = ({
     }
 
     if (values.scope === 'CATEGORIES' && (!values.categoryIds || values.categoryIds.length < 1)) {
-      nextErrors.categories = 'Select at least one category'
+      nextErrors.categories = 'Select at least one subcategory'
     }
 
     if (values.scope === 'PRODUCTS' && (!values.productIds || values.productIds.length < 1)) {
@@ -212,7 +212,7 @@ const OfferForm = ({
               sx={{ mb: 2 }}
             >
               <FormControlLabel value="SHOP" control={<Radio />} label="Entire shop" />
-              <FormControlLabel value="CATEGORIES" control={<Radio />} label="Categories" />
+              <FormControlLabel value="CATEGORIES" control={<Radio />} label="Subcategories" />
               <FormControlLabel value="PRODUCTS" control={<Radio />} label="Products" />
             </RadioGroup>
 
@@ -231,7 +231,7 @@ const OfferForm = ({
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Select Categories"
+                    label="Select Subcategories"
                     error={Boolean(errors.categories)}
                     helperText={errors.categories}
                   />

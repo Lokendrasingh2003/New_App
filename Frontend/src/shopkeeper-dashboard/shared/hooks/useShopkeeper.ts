@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getShopSettings,
   updateBusinessHours,
@@ -39,12 +39,17 @@ export const useShopkeeper = () => {
   const [isLoadingShop, setIsLoadingShop] = useState(true)
   const [isSavingShop, setIsSavingShop] = useState(false)
   const [shopError, setShopError] = useState('')
+  const updateStoreShopSettingsRef = useRef(updateStoreShopSettings)
 
   const shopId = getShopkeeperShopId() || shop.id
 
+  useEffect(() => {
+    updateStoreShopSettingsRef.current = updateStoreShopSettings
+  }, [updateStoreShopSettings])
+
   const syncStoreFromSettings = useCallback(
     (settings: ShopSettings) => {
-      updateStoreShopSettings({
+      updateStoreShopSettingsRef.current({
         shopName: settings.shopName,
         ownerName: settings.ownerName,
         phone: settings.phone,
@@ -61,7 +66,7 @@ export const useShopkeeper = () => {
         },
       })
     },
-    [updateStoreShopSettings]
+    []
   )
 
   const loadShopData = useCallback(async () => {

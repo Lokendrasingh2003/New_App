@@ -51,7 +51,7 @@ const offerSchema = new mongoose.Schema(
     type: { type: String, enum: ['PERCENT', 'FLAT'], required: true },
     value: { type: Number, required: true, min: 0 },
     scope: { type: String, enum: ['SHOP', 'CATEGORIES', 'PRODUCTS'], required: true, index: true },
-    categoryIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'Category', default: [] },
+    categoryIds: { type: [String], default: [] },
     productIds: { type: [mongoose.Schema.Types.ObjectId], ref: 'Product', default: [] },
     conditions: { type: conditionsSchema, default: () => ({}) },
     validity: { type: validitySchema, required: true },

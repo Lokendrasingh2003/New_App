@@ -140,7 +140,7 @@ const OffersListPage = () => {
         }
 
         if (row.scope === 'CATEGORIES') {
-          return `${row.categoryIds?.length ?? 0} categories`
+          return `${row.categoryIds?.length ?? 0} subcategories`
         }
 
         return `${row.productIds?.length ?? 0} products`
@@ -335,7 +335,7 @@ const OffersListPage = () => {
               >
                 <MenuItem value="ALL">All</MenuItem>
                 <MenuItem value="SHOP">Shop</MenuItem>
-                <MenuItem value="CATEGORIES">Categories</MenuItem>
+                <MenuItem value="CATEGORIES">Subcategories</MenuItem>
                 <MenuItem value="PRODUCTS">Products</MenuItem>
               </Select>
             </FormControl>

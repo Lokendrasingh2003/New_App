@@ -22,6 +22,25 @@ const normalizeIdList = (input) => {
   return [];
 };
 
+const normalizeTextList = (input) => {
+  if (Array.isArray(input)) {
+    return [...new Set(input.map((item) => String(item || '').trim()).filter((item) => item.length > 0))];
+  }
+
+  if (typeof input === 'string') {
+    return [
+      ...new Set(
+        input
+          .split(',')
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      ),
+    ];
+  }
+
+  return [];
+};
+
 const dayCode = (date) => {
   const map = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
   return map[new Date(date).getDay()] || 'SUN';
@@ -78,8 +97,8 @@ const isScopeApplicable = (offer, { categoryIds, productIds }) => {
   }
 
   if (offer.scope === 'CATEGORIES') {
-    const offerCategoryIds = (offer.categoryIds || []).map((id) => String(id));
-    return categoryIds.some((id) => offerCategoryIds.includes(String(id)));
+    const offerCategoryIds = new Set((offer.categoryIds || []).map((id) => String(id || '').trim().toLowerCase()));
+    return categoryIds.some((id) => offerCategoryIds.has(String(id || '').trim().toLowerCase()));
   }
 
   if (offer.scope === 'PRODUCTS') {
@@ -169,6 +188,7 @@ const incrementOfferStats = async ({ offerId, discountAmount = 0 }) => {
 
 module.exports = {
   normalizeIdList,
+  normalizeTextList,
   calculateOfferDiscount,
   findApplicableOffers,
   getBestApplicableOffer,

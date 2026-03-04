@@ -1,12 +1,11 @@
 const mongoose = require('mongoose');
 const Offer = require('../models/Offer');
 const Shop = require('../models/Shop');
-const Category = require('../models/Category');
 const Product = require('../models/Product');
 const Shopkeeper = require('../models/Shopkeeper');
 const ApiError = require('../utils/apiError');
 const { sendSuccess } = require('../utils/response');
-const { findApplicableOffers, normalizeIdList } = require('../services/offerService');
+const { findApplicableOffers, normalizeIdList, normalizeTextList } = require('../services/offerService');
 const { HTTP_STATUS, ERROR_CODES, MAX_OFFERS_PER_SHOP } = require('../config/constants');
 
 const parseIntSafe = (value, fallback) => {
@@ -59,7 +58,7 @@ const validateHours = (hours) => {
 };
 
 const validateScopeAndRefs = async ({ shopId, scope, categoryIds, productIds }) => {
-  const categories = Array.isArray(categoryIds) ? categoryIds : [];
+  const categories = normalizeTextList(categoryIds);
   const products = Array.isArray(productIds) ? productIds : [];
 
   if (scope === 'SHOP') {
@@ -68,12 +67,28 @@ const validateScopeAndRefs = async ({ shopId, scope, categoryIds, productIds }) 
 
   if (scope === 'CATEGORIES') {
     if (!categories.length) {
-      throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'categoryIds are required for CATEGORIES scope.', ERROR_CODES.OFFER_SCOPE_INVALID);
+      throw new ApiError(
+        HTTP_STATUS.BAD_REQUEST,
+        'subcategory names are required for CATEGORIES scope.',
+        ERROR_CODES.OFFER_SCOPE_INVALID
+      );
     }
 
-    const count = await Category.countDocuments({ _id: { $in: categories }, isActive: true });
-    if (count !== categories.length) {
-      throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid categoryIds for offer scope.', ERROR_CODES.OFFER_SCOPE_INVALID);
+    const availableSubcategories = await Product.distinct('subcategoryName', {
+      shopId,
+      isDeleted: false,
+      subcategoryName: { $nin: [null, ''] },
+    });
+
+    const allowed = new Set(availableSubcategories.map((name) => String(name || '').trim().toLowerCase()));
+    const hasInvalid = categories.some((name) => !allowed.has(String(name).toLowerCase()));
+
+    if (hasInvalid) {
+      throw new ApiError(
+        HTTP_STATUS.BAD_REQUEST,
+        'Invalid subcategory selection for offer scope.',
+        ERROR_CODES.OFFER_SCOPE_INVALID
+      );
     }
 
     return { categoryIds: categories, productIds: [] };
@@ -330,7 +345,7 @@ const toggleOffer = async (req, res) => {
 const getApplicableOffers = async (req, res) => {
   const now = req.query.timestamp ? new Date(req.query.timestamp) : new Date();
   const cartTotal = Number(req.query.cartTotal || 0);
-  const categoryIds = normalizeIdList(req.query.categoryIds);
+  const categoryIds = normalizeTextList(req.query.categoryIds);
   const productIds = normalizeIdList(req.query.productIds);
   const shopId = req.query.shopId && mongoose.isValidObjectId(req.query.shopId) ? req.query.shopId : undefined;
 

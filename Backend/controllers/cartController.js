@@ -189,11 +189,22 @@ const getCartScope = async (cart) => {
     return { productIds: [], categoryIds: [] };
   }
 
-  const products = await Product.find({ _id: { $in: productIds } }, { _id: 1, categoryId: 1 }).lean();
+  const products = await Product.find(
+    { _id: { $in: productIds } },
+    { _id: 1, subcategoryName: 1 }
+  ).lean();
+
+  const subcategoryNames = [
+    ...new Set(
+      products
+        .map((product) => String(product.subcategoryName || '').trim())
+        .filter((name) => name.length > 0)
+    ),
+  ];
 
   return {
     productIds: products.map((product) => String(product._id)),
-    categoryIds: [...new Set(products.map((product) => String(product.categoryId)))],
+    categoryIds: subcategoryNames,
   };
 };
 

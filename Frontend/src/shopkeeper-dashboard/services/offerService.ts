@@ -38,17 +38,11 @@ type OfferSinglePayload = {
   offer: OfferApiModel
 }
 
-type CategoriesPayload = {
-  categories: Array<{
-    _id: string
-    name: string
-  }>
-}
-
 type ProductsPayload = {
   products: Array<{
     _id: string
     name: string
+    subcategoryName?: string | null
   }>
 }
 
@@ -155,16 +149,28 @@ export const toggleOffer = async (shopId: string, offerId: string, enabled: bool
 }
 
 export const getOfferCategories = async (_shopId?: string): Promise<OfferOption[]> => {
-  const { data } = await api.get<ApiEnvelope<CategoriesPayload>>('/api/categories', {
+  if (!_shopId) {
+    return []
+  }
+
+  const { data } = await api.get<ApiEnvelope<ProductsPayload>>(`/api/shops/${_shopId}/products`, {
     params: {
-      limit: 100,
+      limit: 200,
       offset: 0,
     },
   })
 
-  return (data?.data?.categories || []).map((category) => ({
-    id: category._id,
-    name: category.name,
+  const uniqueSubcategories = Array.from(
+    new Set(
+      (data?.data?.products || [])
+        .map((product) => String(product.subcategoryName || '').trim())
+        .filter((name) => name.length > 0),
+    ),
+  )
+
+  return uniqueSubcategories.map((name) => ({
+    id: name,
+    name,
   }))
 }
 

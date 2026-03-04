@@ -44,6 +44,26 @@ import {
 type StockFilter = 'ALL' | 'LOW' | 'OUT' | 'IN'
 type ActiveFilter = 'ALL' | 'ACTIVE' | 'INACTIVE'
 
+const env = import.meta.env as Record<string, string | undefined>
+const backendOrigin = (env.VITE_API_BASE_URL || env.REACT_APP_API_BASE_URL || 'http://localhost:5000').replace(/\/api\/?$/i, '')
+
+const getProductImageSrc = (imagePath?: string) => {
+  if (!imagePath) {
+    return '/vite.svg'
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(imagePath)) {
+    return imagePath
+  }
+
+  const normalizedPath = imagePath.replace(/\\/g, '/')
+  if (normalizedPath.startsWith('/')) {
+    return `${backendOrigin}${normalizedPath}`
+  }
+
+  return `${backendOrigin}/${normalizedPath}`
+}
+
 const ProductsListPage = () => {
   const navigate = useNavigate()
   const shopId = getShopkeeperShopId()
@@ -216,7 +236,7 @@ const ProductsListPage = () => {
         <Stack direction="row" spacing={1.2} alignItems="center" sx={{ py: 0.5 }}>
           <Box
             component="img"
-            src={params.row.images[0] ? `/${params.row.images[0]}` : '/vite.svg'}
+            src={getProductImageSrc(params.row.images[0])}
             alt={params.row.name}
             onError={(event: React.SyntheticEvent<HTMLImageElement>) => {
               event.currentTarget.src = '/vite.svg'
