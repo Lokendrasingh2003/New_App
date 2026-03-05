@@ -29,13 +29,13 @@ const LoginPage = () => {
     return <Navigate to="/superadmin/dashboard" replace />
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const ok = login(username.trim(), password)
+    const result = await login(username.trim(), password)
 
-    if (!ok) {
-      showError('Invalid credentials. Use admin / admin123')
+    if (!result.ok) {
+      showError(result.error || 'Invalid superadmin credentials/access key')
       return
     }
 
@@ -61,7 +61,10 @@ const LoginPage = () => {
                 SuperAdmin Login
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Sign in to access the control center.
+                Enter any username and your backend admin key (INTERNAL_ADMIN_KEY, or JWT_SECRET if INTERNAL_ADMIN_KEY is not set)
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                Demo: username `superadmin` | password `super123`
               </Typography>
             </Box>
 
@@ -75,7 +78,7 @@ const LoginPage = () => {
             />
 
             <TextField
-              label="Password"
+              label="Admin Access Key"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(event) => setPassword(event.target.value)}

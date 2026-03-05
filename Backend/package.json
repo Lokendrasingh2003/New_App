@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "start": "node server.js",
     "init-db": "node scripts/initDatabase.js",
-    "seed-db": "node scripts/seedDatabase.js",
+    "seed-db": "node scripts/seedMinimalDatabase.js",
     "backup-db": "node scripts/backup.js",
     "restore-db": "node scripts/restore.js",
     "db-stats": "node scripts/dbStats.js",

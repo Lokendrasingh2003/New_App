@@ -1,5 +1,5 @@
 const { MODELS, ensureDbConnection, closeDbConnection } = require('./_shared');
-const { seedDatabase, validateSeedData } = require('./seedDatabase');
+const { seedMinimalDatabase } = require('./seedMinimalDatabase');
 
 const isDevelopment = () => (process.env.NODE_ENV || 'development') === 'development';
 const isStaging = () => (process.env.NODE_ENV || '').toLowerCase() === 'staging';
@@ -21,8 +21,7 @@ const verifyData = async () => {
     counts[name] = await model.estimatedDocumentCount();
   }
 
-  const validation = await validateSeedData().catch(() => ({ skipped: true }));
-  return { counts, validation };
+  return { counts };
 };
 
 const initDatabase = async () => {
@@ -38,10 +37,10 @@ const initDatabase = async () => {
   await createCollectionsAndIndexes();
 
   if (isDevelopment() || isStaging()) {
-    console.log(`Seeding demo data for ${mode} mode...`);
-    await seedDatabase({ mode });
+    console.log(`Seeding minimal non-demo data for ${mode} mode...`);
+    await seedMinimalDatabase();
   } else {
-    console.log('Production mode: skipping demo seeding.');
+    console.log('Production mode: skipping seed data.');
   }
 
   const verification = await verifyData();

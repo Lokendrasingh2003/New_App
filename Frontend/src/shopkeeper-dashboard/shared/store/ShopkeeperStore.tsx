@@ -1,9 +1,4 @@
 import { createContext, useContext, useMemo, useState } from 'react'
-import { mockCategories } from '../../data/mockCategories'
-import { mockOrders } from '../../data/mockOrders'
-import { mockOffers } from '../../data/mockOffers'
-import { mockProducts } from '../../data/mockProducts'
-import { mockShop } from '../../data/mockShop'
 import { getServices } from '../../api/serviceRegistry'
 import type { Category, Subcategory } from '../../types/category'
 import type { Order } from '../../types/order'
@@ -52,7 +47,41 @@ type ShopkeeperStoreContextType = {
   getOfferById: (offerId: string) => Offer | undefined
   updateShopSettings: (updates: Partial<Omit<Shop, 'id' | 'categoryId' | 'categoryName' | 'customSubcategories'>>) => void
   getPublicUrl: () => string
-  resetAllDemoData: () => void
+  resetAllData: () => void
+}
+
+const FALLBACK_CATEGORIES: Category[] = [
+  {
+    id: 'cat-uncategorized',
+    name: 'Uncategorized',
+    subcategories: [],
+  },
+]
+
+const DEFAULT_SHOP: Shop = {
+  id: 'shop-unset',
+  shopName: 'My Shop',
+  categoryId: FALLBACK_CATEGORIES[0].id,
+  categoryName: FALLBACK_CATEGORIES[0].name,
+  customSubcategories: [],
+  ownerName: '',
+  phone: '',
+  city: '',
+  addressLine1: '',
+  area: '',
+  pincode: '',
+  slug: '',
+  publicUrl: '',
+  delivery: {
+    payer: 'CUSTOMER',
+    chargeAmount: 0,
+    serviceRadiusKm: 5,
+  },
+  businessHours: {
+    open: '09:00',
+    close: '21:00',
+  },
+  updatedAt: new Date().toISOString(),
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -75,10 +104,10 @@ const isValidShop = (value: unknown): value is Shop =>
 const normalizeKey = (value: string) => value.trim().toLowerCase()
 
 const getCategoryById = (categoryId: string): Category =>
-  mockCategories.find((category) => category.id === categoryId) ?? mockCategories[0]
+  FALLBACK_CATEGORIES.find((category) => category.id === categoryId) ?? FALLBACK_CATEGORIES[0]
 
 const getFallbackCategoryByShop = (shop: Pick<Shop, 'categoryId' | 'categoryName'>): Category =>
-  mockCategories.find((category) => normalizeKey(category.name) === normalizeKey(shop.categoryName)) ??
+  FALLBACK_CATEGORIES.find((category) => normalizeKey(category.name) === normalizeKey(shop.categoryName)) ??
   getCategoryById(shop.categoryId)
 
 const isPublishedCategoryRecord = (value: unknown): value is PublishedCategoryRecord =>
@@ -143,21 +172,21 @@ const parseCustomSubcategories = (raw: unknown, category: Category): Subcategory
 
 const normalizeShop = (value: unknown): Shop => {
   const raw = isObject(value) ? value : {}
-  const rawCategoryId = typeof raw.categoryId === 'string' ? raw.categoryId : mockShop.categoryId
+  const rawCategoryId = typeof raw.categoryId === 'string' ? raw.categoryId : DEFAULT_SHOP.categoryId
   const category = getCategoryById(rawCategoryId)
 
   return {
-    ...mockShop,
+    ...DEFAULT_SHOP,
     ...raw,
     categoryId: category.id,
     categoryName: category.name,
     customSubcategories: parseCustomSubcategories(raw.customSubcategories, category),
     delivery: {
-      ...mockShop.delivery,
+      ...DEFAULT_SHOP.delivery,
       ...(isObject(raw.delivery) ? raw.delivery : {}),
     },
     businessHours: {
-      ...mockShop.businessHours,
+      ...DEFAULT_SHOP.businessHours,
       ...(isObject(raw.businessHours) ? raw.businessHours : {}),
     },
   }
@@ -319,19 +348,19 @@ const parseArrayStorage = <T,>(
   return parsed
 }
 
-const loadOrders = (): Order[] => parseArrayStorage(SHOPKEEPER_ORDERS_KEY, mockOrders, isValidOrder)
+const loadOrders = (): Order[] => parseArrayStorage(SHOPKEEPER_ORDERS_KEY, [], isValidOrder)
 
 const loadProducts = (shop: Shop): Product[] => {
   const parsed = parseJsonFromStorage(SHOPKEEPER_PRODUCTS_KEY)
-  const source = Array.isArray(parsed) ? parsed : mockProducts
+  const source = Array.isArray(parsed) ? parsed : []
   return normalizeProductsList(source, shop)
 }
 
-const loadOffers = (): Offer[] => parseArrayStorage(SHOPKEEPER_OFFERS_KEY, mockOffers, isValidOffer)
+const loadOffers = (): Offer[] => parseArrayStorage(SHOPKEEPER_OFFERS_KEY, [], isValidOffer)
 
 const loadShop = (): Shop => {
   const parsed = parseJsonFromStorage(SHOPKEEPER_SHOP_KEY)
-  const normalizedShop = isValidShop(parsed) ? normalizeShop(parsed) : normalizeShop(mockShop)
+  const normalizedShop = isValidShop(parsed) ? normalizeShop(parsed) : normalizeShop(DEFAULT_SHOP)
   const customSubcategoriesRaw = parseJsonFromStorage(SHOPKEEPER_CUSTOM_SUBCATEGORIES_KEY)
 
   if (!Array.isArray(customSubcategoriesRaw)) {
@@ -750,15 +779,13 @@ export const ShopkeeperStoreProvider = ({ children }: { children: React.ReactNod
 
   const getPublicUrl = () => shop.publicUrl
 
-  const resetAllDemoData = () => {
-    syncWithService(services.shopService.resetDemo())
-
-    const initialShop = normalizeShop(mockShop)
-    setOrders(mockOrders)
-    setProducts(normalizeProductsList(mockProducts, initialShop))
-    setOffers(mockOffers)
+  const resetAllData = () => {
+    const initialShop = normalizeShop(DEFAULT_SHOP)
+    setOrders([])
+    setProducts([])
+    setOffers([])
     setShop(initialShop)
-    showMessage('Demo data reset')
+    showMessage('Local store reset')
   }
 
   const value = useMemo(
@@ -767,7 +794,7 @@ export const ShopkeeperStoreProvider = ({ children }: { children: React.ReactNod
       products,
       offers,
       shop,
-      categories: publishedCategories && publishedCategories.length > 0 ? publishedCategories : mockCategories,
+      categories: publishedCategories && publishedCategories.length > 0 ? publishedCategories : FALLBACK_CATEGORIES,
       addCustomSubcategory,
       removeCustomSubcategory,
       getShopCategory,
@@ -790,7 +817,7 @@ export const ShopkeeperStoreProvider = ({ children }: { children: React.ReactNod
       getOfferById,
       updateShopSettings,
       getPublicUrl,
-      resetAllDemoData,
+      resetAllData,
     }),
     [orders, products, offers, shop, services, showMessage, publishedCategories],
   )

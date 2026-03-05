@@ -465,8 +465,9 @@ const adminCitySchemas = {
     state: Joi.string().trim().min(2).max(80).required(),
     latitude: Joi.number().min(-90).max(90).required(),
     longitude: Joi.number().min(-180).max(180).required(),
+    isActive: Joi.boolean().optional(),
     deliveryAvailable: Joi.boolean().required(),
-    populationEstimate: Joi.number().integer().min(0).optional(),
+    populationEstimate: Joi.number().integer().min(0).allow(null).optional(),
   }),
   listQuery: Joi.object({
     search: Joi.string().trim().max(100).optional(),
@@ -502,7 +503,6 @@ const adminCategorySchemas = {
           isActive: Joi.boolean().optional(),
         })
       )
-      .min(5)
       .max(8)
       .required(),
   }),

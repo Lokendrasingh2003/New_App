@@ -57,6 +57,7 @@ const PayoutsPage = () => {
     payoutRequests,
     shops,
     cities,
+    syncPayouts,
     approvePayout,
     rejectPayout,
     completePayout,
@@ -74,6 +75,23 @@ const PayoutsPage = () => {
   const [completeTargetId, setCompleteTargetId] = useState<string | null>(null)
   const [rejectDialog, setRejectDialog] = useState<RejectDialogState>(initialRejectDialogState)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncPayouts()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load payout requests from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncPayouts])
 
   const shopMap = useMemo(() => new Map(shops.map((shop) => [shop.id, shop])), [shops])
 
@@ -140,8 +158,8 @@ const PayoutsPage = () => {
     downloadCsv(filename, csv)
   }
 
-  const runApprove = (payoutRequestId: string) => {
-    const result = approvePayout(payoutRequestId)
+  const runApprove = async (payoutRequestId: string) => {
+    const result = await approvePayout(payoutRequestId)
     if (!result.ok) {
       showError(result.error ?? 'Could not approve payout request.')
       return
@@ -151,8 +169,8 @@ const PayoutsPage = () => {
     setApproveTargetId(null)
   }
 
-  const runReject = (payoutRequestId: string, reason: string) => {
-    const result = rejectPayout(payoutRequestId, reason)
+  const runReject = async (payoutRequestId: string, reason: string) => {
+    const result = await rejectPayout(payoutRequestId, reason)
     if (!result.ok) {
       showError(result.error ?? 'Could not reject payout request.')
       return
@@ -162,8 +180,8 @@ const PayoutsPage = () => {
     setRejectDialog(initialRejectDialogState)
   }
 
-  const runComplete = (payoutRequestId: string) => {
-    const result = completePayout(payoutRequestId)
+  const runComplete = async (payoutRequestId: string) => {
+    const result = await completePayout(payoutRequestId)
     if (!result.ok) {
       showError(result.error ?? 'Could not mark payout as completed.')
       return
@@ -459,12 +477,12 @@ const PayoutsPage = () => {
         confirmLabel="Approve"
         cancelLabel="Cancel"
         onClose={() => setApproveTargetId(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!approveTargetId) {
             return
           }
 
-          runApprove(approveTargetId)
+          await runApprove(approveTargetId)
         }}
       />
 
@@ -489,12 +507,12 @@ const PayoutsPage = () => {
             variant="contained"
             color="error"
             disabled={Boolean(rejectReasonError)}
-            onClick={() => {
+            onClick={async () => {
               if (!rejectDialog.payoutRequestId) {
                 return
               }
 
-              runReject(rejectDialog.payoutRequestId, rejectDialog.reason)
+              await runReject(rejectDialog.payoutRequestId, rejectDialog.reason)
             }}
           >
             Reject
@@ -509,12 +527,12 @@ const PayoutsPage = () => {
         confirmLabel="Mark Completed"
         cancelLabel="Cancel"
         onClose={() => setCompleteTargetId(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!completeTargetId) {
             return
           }
 
-          runComplete(completeTargetId)
+          await runComplete(completeTargetId)
         }}
       />
     </>

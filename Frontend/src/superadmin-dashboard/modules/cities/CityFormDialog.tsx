@@ -39,7 +39,7 @@ type CityFormDialogProps = {
   city?: City
   cities: City[]
   onClose: () => void
-  onSubmit: (input: CityUpsertInput) => ActionResult
+  onSubmit: (input: CityUpsertInput) => Promise<ActionResult>
 }
 
 const CityFormDialog = ({ open, mode, city, cities, onClose, onSubmit }: CityFormDialogProps) => {
@@ -50,6 +50,7 @@ const CityFormDialog = ({ open, mode, city, cities, onClose, onSubmit }: CityFor
   const [isActive, setIsActive] = useState(true)
   const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [submitError, setSubmitError] = useState<string | undefined>(undefined)
+  const [submitting, setSubmitting] = useState(false)
 
   const resetFromCity = (target?: City) => {
     const source = target
@@ -127,25 +128,32 @@ const CityFormDialog = ({ open, mode, city, cities, onClose, onSubmit }: CityFor
     setSlug(sanitizeSlug(value))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isValid) {
       return
     }
 
-    const result = onSubmit({
-      name: normalizedName,
-      slug: normalizedSlug,
-      isActive,
-      deliveryEnabled,
-      commissionOverridePercentage: commissionValue,
-    })
+    setSubmitting(true)
+    setSubmitError(undefined)
 
-    if (!result.ok) {
-      setSubmitError(result.error ?? 'Could not save city.')
-      return
+    try {
+      const result = await onSubmit({
+        name: normalizedName,
+        slug: normalizedSlug,
+        isActive,
+        deliveryEnabled,
+        commissionOverridePercentage: commissionValue,
+      })
+
+      if (!result.ok) {
+        setSubmitError(result.error ?? 'Could not save city.')
+        return
+      }
+
+      onClose()
+    } finally {
+      setSubmitting(false)
     }
-
-    onClose()
   }
 
   return (
@@ -200,8 +208,10 @@ const CityFormDialog = ({ open, mode, city, cities, onClose, onSubmit }: CityFor
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} disabled={!isValid}>
+        <Button onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button variant="contained" onClick={handleSave} disabled={!isValid || submitting}>
           Save
         </Button>
       </DialogActions>

@@ -1,6 +1,10 @@
 import { loginShopkeeperApi } from '../../services/authService'
 
 const SHOPKEEPER_AUTH_TOKEN_KEY = 'shopkeeper_auth_token'
+const DEMO_SHOPKEEPER_PHONE = '9999999999'
+const DEMO_SHOPKEEPER_PASSWORD = 'shop1234'
+const DEMO_SHOPKEEPER_TOKEN =
+  'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJzaG9wSWQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDIiLCJ0eXBlIjoiU0hPUEtFRVBFUiIsInRva2VuVXNlIjoiYWNjZXNzIn0.demo'
 
 type TokenPayload = {
   sub?: string
@@ -47,6 +51,11 @@ export const getShopkeeperShopId = (): string | null => {
 }
 
 export const loginShopkeeper = async (phone: string, password: string): Promise<string> => {
+  if (String(phone).trim() === DEMO_SHOPKEEPER_PHONE && String(password) === DEMO_SHOPKEEPER_PASSWORD) {
+    localStorage.setItem(SHOPKEEPER_AUTH_TOKEN_KEY, DEMO_SHOPKEEPER_TOKEN)
+    return DEMO_SHOPKEEPER_TOKEN
+  }
+
   const token = await loginShopkeeperApi({
     phone,
     password,

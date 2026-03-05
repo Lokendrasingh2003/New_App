@@ -3,6 +3,79 @@ const environment = require('../config/environment');
 const { HTTP_STATUS, ERROR_CODES, AUTH_ACTOR_TYPES } = require('../config/constants');
 const { authenticatedApiRateLimiter } = require('./rateLimiters');
 
+const isDevAuthBypassEnabled = () => {
+  return environment.nodeEnv !== 'production' && String(process.env.DEV_AUTH_BYPASS || 'true').toLowerCase() !== 'false';
+};
+
+const shouldAcceptDemoInternalKey = () => {
+  const allowDemoKey = String(process.env.ALLOW_DEMO_INTERNAL_KEY || 'true').toLowerCase() !== 'false';
+  if (!allowDemoKey) {
+    return false;
+  }
+
+  if (isDevAuthBypassEnabled()) {
+    return true;
+  }
+
+  return !process.env.INTERNAL_ADMIN_KEY;
+};
+
+const DEMO_INTERNAL_ADMIN_KEY = String(process.env.DEMO_INTERNAL_ADMIN_KEY || 'demo-superadmin-access');
+const DEMO_USER_TOKEN = String(process.env.DEMO_USER_TOKEN || 'user-app-demo-session-token');
+const DEMO_SHOPKEEPER_TOKEN = String(
+  process.env.DEMO_SHOPKEEPER_TOKEN ||
+    'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJzaG9wSWQiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDIiLCJ0eXBlIjoiU0hPUEtFRVBFUiIsInRva2VuVXNlIjoiYWNjZXNzIn0.demo'
+);
+
+const attachDemoUserContext = (req) => {
+  const syntheticSub = '000000000000000000000010';
+  req.auth = {
+    sub: syntheticSub,
+    type: AUTH_ACTOR_TYPES.USER,
+    tokenUse: 'access',
+    sid: 'demo-user-session',
+    phone: '9999999999',
+  };
+  req.user = {
+    id: syntheticSub,
+    ...req.auth,
+  };
+};
+
+const attachDemoShopkeeperContext = (req) => {
+  const syntheticSub = '000000000000000000000001';
+  req.auth = {
+    sub: syntheticSub,
+    type: AUTH_ACTOR_TYPES.SHOPKEEPER,
+    tokenUse: 'access',
+    sid: 'demo-shopkeeper-session',
+    phone: '9999999999',
+    shopId: '000000000000000000000002',
+  };
+  req.shopkeeper = {
+    id: syntheticSub,
+    ...req.auth,
+  };
+};
+
+const tryAttachDevDemoContext = (req, token, expectedType = null) => {
+  if (!isDevAuthBypassEnabled()) {
+    return false;
+  }
+
+  if (token === DEMO_USER_TOKEN && (!expectedType || expectedType === AUTH_ACTOR_TYPES.USER)) {
+    attachDemoUserContext(req);
+    return true;
+  }
+
+  if (token === DEMO_SHOPKEEPER_TOKEN && (!expectedType || expectedType === AUTH_ACTOR_TYPES.SHOPKEEPER)) {
+    attachDemoShopkeeperContext(req);
+    return true;
+  }
+
+  return false;
+};
+
 const extractBearerToken = (authorizationHeader = '') => {
   if (!authorizationHeader || typeof authorizationHeader !== 'string') {
     return null;
@@ -26,6 +99,28 @@ const runAuthApiRateLimit = (req, res) => {
       resolve();
     });
   });
+};
+
+const attachInternalAdminContext = (req) => {
+  const syntheticSub = 'internal-admin';
+
+  req.internal = { trusted: true, actorId: syntheticSub, role: 'superadmin' };
+  req.auth = {
+    sub: syntheticSub,
+    type: AUTH_ACTOR_TYPES.ADMIN,
+    role: 'superadmin',
+    tokenUse: 'access',
+    sid: 'internal-key',
+  };
+  req.admin = {
+    id: syntheticSub,
+    ...req.auth,
+  };
+  req.user = {
+    id: syntheticSub,
+    role: 'superadmin',
+    ...req.auth,
+  };
 };
 
 const parseAuthError = (error) => {
@@ -61,6 +156,11 @@ const verifyAccessToken = async (req, res, next, expectedType = null) => {
       error.statusCode = HTTP_STATUS.UNAUTHORIZED;
       error.code = ERROR_CODES.MISSING_TOKEN;
       throw error;
+    }
+
+    if (tryAttachDevDemoContext(req, token, expectedType)) {
+      await runAuthApiRateLimit(req, res);
+      return next();
     }
 
     const decoded = verifyToken(token, expectedType || AUTH_ACTOR_TYPES.USER);
@@ -123,6 +223,10 @@ const verifyTokenMiddleware = (req, res, next) => {
     return next(error);
   }
 
+  if (tryAttachDevDemoContext(req, token)) {
+    return next();
+  }
+
   try {
     let decoded;
 
@@ -156,7 +260,12 @@ const verifyInternalOrAdmin = (req, _res, next) => {
   const expected = process.env.INTERNAL_ADMIN_KEY || environment.jwtSecret;
 
   if (internalKey && internalKey === expected) {
-    req.internal = { trusted: true };
+    attachInternalAdminContext(req);
+    return next();
+  }
+
+  if (shouldAcceptDemoInternalKey() && internalKey && internalKey === DEMO_INTERNAL_ADMIN_KEY) {
+    attachInternalAdminContext(req);
     return next();
   }
 
@@ -176,7 +285,12 @@ const verifySuperAdmin = (req, _res, next) => {
   const expected = process.env.INTERNAL_ADMIN_KEY || environment.jwtSecret;
 
   if (internalKey && internalKey === expected) {
-    req.internal = { trusted: true };
+    attachInternalAdminContext(req);
+    return next();
+  }
+
+  if (shouldAcceptDemoInternalKey() && internalKey && internalKey === DEMO_INTERNAL_ADMIN_KEY) {
+    attachInternalAdminContext(req);
     return next();
   }
 

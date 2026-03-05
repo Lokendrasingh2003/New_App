@@ -31,7 +31,7 @@ export const orderToDTO = (order: Order, shopId: string, shop: Shop): OrderDTO =
     },
     items: [
       {
-        productName: 'Demo item',
+        productName: 'Order item',
         variantLabel: 'Default',
         qty,
         price: itemPrice,

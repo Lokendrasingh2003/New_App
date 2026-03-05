@@ -64,8 +64,9 @@ const buildCityPayload = (input) => ({
 
 const createCity = async (req, res) => {
   const payload = buildCityPayload(req.body);
+  const nextIsActive = req.body.isActive === undefined ? true : Boolean(req.body.isActive);
 
-  if (req.body.isActive === true) {
+  if (nextIsActive) {
     await ensurePublishedCategoryExists();
   }
 
@@ -73,7 +74,7 @@ const createCity = async (req, res) => {
 
   const city = await City.create({
     ...payload,
-    isActive: true,
+    isActive: nextIsActive,
     shopCount: 0,
   });
 
@@ -207,6 +208,12 @@ const updateCity = async (req, res) => {
   }
 
   const payload = buildCityPayload(req.body);
+  const nextIsActive = req.body.isActive === undefined ? city.isActive : Boolean(req.body.isActive);
+
+  if (nextIsActive) {
+    await ensurePublishedCategoryExists();
+  }
+
   await ensureUniqueCity({ name: payload.name, slug: payload.slug, excludeId: city._id });
 
   const before = city.toObject();
@@ -217,6 +224,7 @@ const updateCity = async (req, res) => {
   city.state = payload.state;
   city.latitude = payload.latitude;
   city.longitude = payload.longitude;
+  city.isActive = nextIsActive;
   city.deliveryAvailable = payload.deliveryAvailable;
   city.populationEstimate = payload.populationEstimate;
 

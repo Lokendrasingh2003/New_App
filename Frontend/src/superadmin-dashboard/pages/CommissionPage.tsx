@@ -1,6 +1,6 @@
 import { Button, Card, CardContent, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { CommissionScope } from '../types/CommissionConfig'
@@ -46,6 +46,7 @@ const CommissionPage = () => {
     cities,
     categories,
     shops,
+    syncCommission,
     setDefaultCommission,
     upsertCityOverride,
     removeCityOverride,
@@ -63,6 +64,23 @@ const CommissionPage = () => {
   const [previewCityId, setPreviewCityId] = useState('')
   const [previewCategoryId, setPreviewCategoryId] = useState('')
   const [previewShopId, setPreviewShopId] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncCommission()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load commission settings from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncCommission])
 
   const cityMap = useMemo(() => new Map(cities.map((item) => [item.id, item])), [cities])
   const categoryMap = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories])
@@ -371,7 +389,7 @@ const CommissionPage = () => {
     [commission.shopOverrides, shopMap],
   )
 
-  const handleSaveOverride = () => {
+  const handleSaveOverride = async () => {
     if (overrideValidationError) {
       showError(overrideValidationError)
       return
@@ -381,10 +399,10 @@ const CommissionPage = () => {
 
     const result =
       overrideDialog.scope === 'city'
-        ? upsertCityOverride(overrideDialog.targetId, percentage)
+        ? await upsertCityOverride(overrideDialog.targetId, percentage)
         : overrideDialog.scope === 'category'
-          ? upsertCategoryOverride(overrideDialog.targetId, percentage)
-          : upsertShopOverride(overrideDialog.targetId, percentage)
+          ? await upsertCategoryOverride(overrideDialog.targetId, percentage)
+          : await upsertShopOverride(overrideDialog.targetId, percentage)
 
     if (!result.ok) {
       showError(result.error ?? 'Could not save override.')
@@ -415,8 +433,8 @@ const CommissionPage = () => {
               <Button
                 variant="contained"
                 disabled={Boolean(defaultValidationError)}
-                onClick={() => {
-                  const result = setDefaultCommission(Number(defaultInput))
+                onClick={async () => {
+                  const result = await setDefaultCommission(Number(defaultInput))
                   if (!result.ok) {
                     showError(result.error ?? 'Could not save default commission.')
                     return
@@ -623,7 +641,7 @@ const CommissionPage = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setOverrideDialog(initialOverrideDialogState)}>Cancel</Button>
-          <Button variant="contained" disabled={Boolean(overrideValidationError)} onClick={handleSaveOverride}>
+          <Button variant="contained" disabled={Boolean(overrideValidationError)} onClick={async () => await handleSaveOverride()}>
             Save
           </Button>
         </DialogActions>
@@ -636,13 +654,13 @@ const CommissionPage = () => {
         confirmLabel="Remove"
         cancelLabel="Cancel"
         onClose={() => setRemoveDialog(initialRemoveDialogState)}
-        onConfirm={() => {
+        onConfirm={async () => {
           const result =
             removeDialog.scope === 'city'
-              ? removeCityOverride(removeDialog.targetId)
+              ? await removeCityOverride(removeDialog.targetId)
               : removeDialog.scope === 'category'
-                ? removeCategoryOverride(removeDialog.targetId)
-                : removeShopOverride(removeDialog.targetId)
+                ? await removeCategoryOverride(removeDialog.targetId)
+                : await removeShopOverride(removeDialog.targetId)
 
           if (!result.ok) {
             showError(result.error ?? 'Could not remove override.')

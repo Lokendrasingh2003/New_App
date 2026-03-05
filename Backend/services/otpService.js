@@ -2,6 +2,7 @@ const { OTP_EXPIRY_MINUTES, OTP_MAX_ATTEMPTS, OTP_ATTEMPT_WINDOW_MINUTES } = req
 const { generateOtp, sendOtpSms } = require('../utils/authHelpers');
 const ApiError = require('../utils/apiError');
 const { HTTP_STATUS, ERROR_CODES } = require('../config/constants');
+const environment = require('../config/environment');
 
 const sendOtpAttempts = new Map();
 const verifyOtpAttempts = new Map();
@@ -52,11 +53,22 @@ const clearAttempts = (bucket, phone) => {
   bucket.delete(phone);
 };
 
+const resolveOtp = () => {
+  if (environment.nodeEnv !== 'production') {
+    const fixedOtp = String(process.env.DEV_FIXED_OTP || '123456').trim();
+    if (/^\d{6}$/.test(fixedOtp)) {
+      return fixedOtp;
+    }
+  }
+
+  return generateOtp();
+};
+
 const createOtpPayload = (phone) => {
   assertAttemptLimit(sendOtpAttempts, phone);
   registerAttempt(sendOtpAttempts, phone);
 
-  const otp = generateOtp();
+  const otp = resolveOtp();
   const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
   sendOtpSms(phone, otp);

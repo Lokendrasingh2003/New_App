@@ -21,8 +21,8 @@ type CategoryFormDialogProps = {
   category?: Category
   categories: Category[]
   onClose: () => void
-  onSubmitAdd: (name: string) => ActionResult
-  onSubmitEdit: (categoryId: string, patch: { name: string; isActive: boolean }) => ActionResult
+  onSubmitAdd: (name: string) => Promise<ActionResult>
+  onSubmitEdit: (categoryId: string, patch: { name: string; isActive: boolean }) => Promise<ActionResult>
 }
 
 const CategoryFormDialog = ({
@@ -37,6 +37,7 @@ const CategoryFormDialog = ({
   const [name, setName] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [submitError, setSubmitError] = useState<string | undefined>(undefined)
+  const [submitting, setSubmitting] = useState(false)
 
   const handleEntered = () => {
     setName(category?.name ?? '')
@@ -64,22 +65,29 @@ const CategoryFormDialog = ({
 
   const canSave = !nameError
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) {
       return
     }
 
-    const result =
-      mode === 'add'
-        ? onSubmitAdd(normalizedName)
-        : onSubmitEdit(category?.id ?? '', { name: normalizedName, isActive })
+    setSubmitting(true)
+    setSubmitError(undefined)
 
-    if (!result.ok) {
-      setSubmitError(result.error ?? 'Could not save category.')
-      return
+    try {
+      const result =
+        mode === 'add'
+          ? await onSubmitAdd(normalizedName)
+          : await onSubmitEdit(category?.id ?? '', { name: normalizedName, isActive })
+
+      if (!result.ok) {
+        setSubmitError(result.error ?? 'Could not save category.')
+        return
+      }
+
+      onClose()
+    } finally {
+      setSubmitting(false)
     }
-
-    onClose()
   }
 
   return (
@@ -112,8 +120,10 @@ const CategoryFormDialog = ({
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained" disabled={!canSave}>
+        <Button onClick={onClose} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} variant="contained" disabled={!canSave || submitting}>
           Save
         </Button>
       </DialogActions>

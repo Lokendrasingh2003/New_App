@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import type { ReactElement } from 'react'
-import { isLoggedIn } from './authStore'
+import { useEffect, useState } from 'react'
+import { isLoggedIn, restoreSession } from './authStore'
 
 type SuperAdminProtectedRouteProps = {
   children: ReactElement
@@ -8,8 +9,37 @@ type SuperAdminProtectedRouteProps = {
 
 const SuperAdminProtectedRoute = ({ children }: SuperAdminProtectedRouteProps) => {
   const location = useLocation()
+  const [allowed, setAllowed] = useState<boolean | null>(null)
 
-  if (!isLoggedIn()) {
+  useEffect(() => {
+    let mounted = true
+
+    const verify = async () => {
+      if (!isLoggedIn()) {
+        if (mounted) {
+          setAllowed(false)
+        }
+        return
+      }
+
+      const ok = await restoreSession()
+      if (mounted) {
+        setAllowed(ok)
+      }
+    }
+
+    void verify()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  if (allowed === null) {
+    return null
+  }
+
+  if (!allowed) {
     return <Navigate to="/superadmin/login" replace state={{ from: location.pathname }} />
   }
 

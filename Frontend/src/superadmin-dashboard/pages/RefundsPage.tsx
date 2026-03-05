@@ -17,7 +17,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { CreateRefundInput } from '../store/types.ts'
@@ -75,6 +75,7 @@ const RefundsPage = () => {
     orders,
     payments,
     cities,
+    syncRefunds,
     createRefund,
     setRefundProcessing,
     completeRefund,
@@ -96,6 +97,23 @@ const RefundsPage = () => {
   const [completeConfirmId, setCompleteConfirmId] = useState<string | null>(null)
   const [failDialog, setFailDialog] = useState<FailDialogState>(initialFailDialogState)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncRefunds()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load refunds from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncRefunds])
 
   const orderMap = useMemo(() => new Map(orders.map((item) => [item.id, item])), [orders])
   const paymentMap = useMemo(() => new Map(payments.map((item) => [item.id, item])), [payments])
@@ -221,7 +239,7 @@ const RefundsPage = () => {
     return undefined
   }, [failDialog.note, failDialog.open])
 
-  const runCreateRefund = () => {
+  const runCreateRefund = async () => {
     const payload: CreateRefundInput = {
       orderId: createDialog.orderId.trim(),
       paymentId: createDialog.paymentId.trim(),
@@ -229,7 +247,7 @@ const RefundsPage = () => {
       amount: createDialog.amount.trim() ? Number(createDialog.amount) : undefined,
     }
 
-    const result = createRefund(payload)
+    const result = await createRefund(payload)
     if (!result.ok) {
       showError(result.error ?? 'Could not create refund.')
       return
@@ -446,7 +464,7 @@ const RefundsPage = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setCreateDialog(initialCreateDialogState)}>Cancel</Button>
-          <Button variant="contained" disabled={Boolean(createValidationError)} onClick={runCreateRefund}>
+          <Button variant="contained" disabled={Boolean(createValidationError)} onClick={async () => await runCreateRefund()}>
             Create
           </Button>
         </DialogActions>
@@ -558,12 +576,12 @@ const RefundsPage = () => {
         confirmLabel="Move"
         cancelLabel="Cancel"
         onClose={() => setProcessingConfirmId(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!processingConfirmId) {
             return
           }
 
-          const result = setRefundProcessing(processingConfirmId)
+          const result = await setRefundProcessing(processingConfirmId)
           if (!result.ok) {
             showError(result.error ?? 'Could not move refund to processing.')
             return
@@ -581,12 +599,12 @@ const RefundsPage = () => {
         confirmLabel="Complete"
         cancelLabel="Cancel"
         onClose={() => setCompleteConfirmId(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!completeConfirmId) {
             return
           }
 
-          const result = completeRefund(completeConfirmId)
+          const result = await completeRefund(completeConfirmId)
           if (!result.ok) {
             showError(result.error ?? 'Could not complete refund.')
             return
@@ -618,12 +636,12 @@ const RefundsPage = () => {
             variant="contained"
             color="error"
             disabled={Boolean(failValidationError)}
-            onClick={() => {
+            onClick={async () => {
               if (!failDialog.refundId) {
                 return
               }
 
-              const result = failRefund(failDialog.refundId, failDialog.note)
+              const result = await failRefund(failDialog.refundId, failDialog.note)
               if (!result.ok) {
                 showError(result.error ?? 'Could not mark refund failed.')
                 return

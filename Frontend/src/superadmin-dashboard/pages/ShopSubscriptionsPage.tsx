@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
@@ -65,7 +65,17 @@ const SubscriptionTabs = () => {
 }
 
 const ShopSubscriptionsPage = () => {
-  const { shopSubscriptions, plans, shops, getPlanById, getShopName, getCityName, getExpiringSubscriptions } = useSuperAdminStore()
+  const {
+    shopSubscriptions,
+    plans,
+    shops,
+    syncPlans,
+    syncShopSubscriptions,
+    getPlanById,
+    getShopName,
+    getCityName,
+    getExpiringSubscriptions,
+  } = useSuperAdminStore()
   const { showError } = useAppSnackbar()
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -73,6 +83,28 @@ const ShopSubscriptionsPage = () => {
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const plansResult = await syncPlans()
+      if (!plansResult.ok && mounted) {
+        showError(plansResult.error ?? 'Could not load plans from backend.')
+      }
+
+      const subscriptionsResult = await syncShopSubscriptions()
+      if (!subscriptionsResult.ok && mounted) {
+        showError(subscriptionsResult.error ?? 'Could not load shop subscriptions from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncPlans, syncShopSubscriptions])
 
   const selectedSubscription = useMemo(
     () => (selectedId ? shopSubscriptions.find((item) => item.id === selectedId) ?? null : null),

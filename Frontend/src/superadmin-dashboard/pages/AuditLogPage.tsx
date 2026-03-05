@@ -18,7 +18,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { AuditEvent } from '../types/AuditEvent'
@@ -40,7 +40,7 @@ const formatTypeLabel = (value: string) =>
     .join(' ')
 
 const AuditLogPage = () => {
-  const { auditEvents, clearAuditEvents } = useSuperAdminStore()
+  const { auditEvents, syncAuditEvents, clearAuditEvents } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [typeFilter, setTypeFilter] = useState('ALL')
@@ -49,6 +49,23 @@ const AuditLogPage = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [confirmClearOpen, setConfirmClearOpen] = useState(false)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncAuditEvents()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load audit logs from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncAuditEvents])
 
   const typeOptions = useMemo(() => {
     const values = Array.from(new Set(auditEvents.map((event) => event.type))).sort((a, b) => a.localeCompare(b))
@@ -271,7 +288,7 @@ const AuditLogPage = () => {
       <ConfirmDialog
         open={confirmClearOpen}
         title="Clear audit log?"
-        description="This action will remove all audit events from local demo storage."
+        description="This action will remove all audit events from local storage."
         confirmLabel="Clear"
         cancelLabel="Cancel"
         onClose={() => setConfirmClearOpen(false)}

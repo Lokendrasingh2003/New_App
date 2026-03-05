@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CC_PUBLISHED_META_KEY } from '../app/storageKeys'
 import CategoryFormDialog from '../modules/categories/CategoryFormDialog'
@@ -35,7 +35,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
 const CategoriesPage = () => {
   const navigate = useNavigate()
-  const { categories, addCategory, updateCategory, publishCategories } = useSuperAdminStore()
+  const { categories, syncCategories, addCategory, updateCategory, publishCategories } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [search, setSearch] = useState('')
@@ -45,6 +45,23 @@ const CategoriesPage = () => {
   const [selectedCategory, setSelectedCategory] = useState<Category | undefined>(undefined)
   const [toggleConfirmCategory, setToggleConfirmCategory] = useState<Category | null>(null)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncCategories()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load categories from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncCategories])
 
   const publishedMeta = (() => {
     try {
@@ -72,16 +89,12 @@ const CategoriesPage = () => {
   const publishValidationMessage = useMemo(() => {
     const activeCategories = categories.filter((category) => category.isActive)
 
-    if (activeCategories.length < 5) {
-      return 'Need at least 5 active categories to publish.'
-    }
-
     const invalid = activeCategories.filter(
-      (category) => category.subcategories.length < 5 || category.subcategories.length > 8,
+      (category) => category.subcategories.length > 8,
     )
     if (invalid.length > 0) {
       const details = invalid.map((category) => `${category.name} (${category.subcategories.length})`).join(', ')
-      return `Invalid subcategory counts: ${details}. Each active category must have 5 to 8.`
+      return `Invalid subcategory counts: ${details}. Each active category can have at most 8.`
     }
 
     return undefined
@@ -176,8 +189,8 @@ const CategoriesPage = () => {
     [navigate],
   )
 
-  const handlePublish = () => {
-    const result = publishCategories()
+  const handlePublish = async () => {
+    const result = await publishCategories()
 
     if (!result.ok) {
       showError(result.error ?? 'Failed to publish categories.')
@@ -195,16 +208,16 @@ const CategoriesPage = () => {
     setLastPublishedAt(meta?.publishedAt)
   }
 
-  const handleAddCategory = (name: string) => {
-    const result = addCategory(name)
+  const handleAddCategory = async (name: string) => {
+    const result = await addCategory(name)
     if (result.ok) {
       showSuccess('Category created')
     }
     return result
   }
 
-  const handleEditCategory = (categoryId: string, patch: { name: string; isActive: boolean }) => {
-    const result = updateCategory(categoryId, patch)
+  const handleEditCategory = async (categoryId: string, patch: { name: string; isActive: boolean }) => {
+    const result = await updateCategory(categoryId, patch)
     if (result.ok) {
       showSuccess('Category updated')
     }
@@ -358,12 +371,12 @@ const CategoriesPage = () => {
         confirmLabel="Confirm"
         cancelLabel="Cancel"
         onClose={() => setToggleConfirmCategory(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!toggleConfirmCategory) {
             return
           }
 
-          const result = updateCategory(toggleConfirmCategory.id, { isActive: !toggleConfirmCategory.isActive })
+          const result = await updateCategory(toggleConfirmCategory.id, { isActive: !toggleConfirmCategory.isActive })
           if (result.ok) {
             showSuccess(`Category ${toggleConfirmCategory.isActive ? 'deactivated' : 'activated'}`)
           } else {

@@ -63,7 +63,7 @@ const ManageSubcategoriesPage = () => {
               </Typography>
               {showCategoryFallbackWarning && (
                 <Alert severity="warning" sx={{ mt: 1 }}>
-                  Your shop category is not published by admin yet. Using fallback demo categories.
+                  Your shop category is not published by admin yet. Using fallback categories.
                 </Alert>
               )}
             </Stack>

@@ -9,7 +9,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import { useAppSnackbar } from '../ui/AppSnackbarProvider'
@@ -22,7 +22,7 @@ const MAX_SUBCATEGORIES = 8
 const CategoryDetailsPage = () => {
   const navigate = useNavigate()
   const { slug } = useParams<{ slug: string }>()
-  const { getCategoryBySlug, addSubcategory, removeSubcategory } = useSuperAdminStore()
+  const { syncCategories, getCategoryBySlug, addSubcategory, removeSubcategory } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [newSubcategory, setNewSubcategory] = useState('')
@@ -32,6 +32,10 @@ const CategoryDetailsPage = () => {
   const category = slug ? getCategoryBySlug(slug) : undefined
 
   const normalizedInput = useMemo(() => newSubcategory.trim().replace(/\s+/g, ' '), [newSubcategory])
+
+  useEffect(() => {
+    void syncCategories()
+  }, [syncCategories])
 
   if (!category) {
     return (
@@ -55,7 +59,7 @@ const CategoryDetailsPage = () => {
 
   const canAdd = category.subcategories.length < MAX_SUBCATEGORIES
 
-  const handleAddSubcategory = () => {
+  const handleAddSubcategory = async () => {
     if (!normalizedInput) {
       setInputError('Subcategory name is required.')
       return
@@ -67,7 +71,7 @@ const CategoryDetailsPage = () => {
       return
     }
 
-    const result = addSubcategory(category.id, normalizedInput)
+    const result = await addSubcategory(category.id, normalizedInput)
     if (!result.ok) {
       setInputError(result.error ?? 'Could not add subcategory.')
       return
@@ -150,12 +154,12 @@ const CategoryDetailsPage = () => {
         confirmLabel="Remove"
         cancelLabel="Cancel"
         onClose={() => setRemoveTarget(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!removeTarget) {
             return
           }
 
-          const result = removeSubcategory(category.id, removeTarget)
+          const result = await removeSubcategory(category.id, removeTarget)
           if (result.ok) {
             showSuccess('Subcategory removed')
           } else {

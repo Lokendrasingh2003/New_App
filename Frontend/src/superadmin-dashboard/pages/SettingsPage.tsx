@@ -8,12 +8,17 @@ import { useAppSnackbar } from '../ui/AppSnackbarProvider'
 
 const SettingsPage = () => {
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const { resetAllDemoData } = useSuperAdminStore()
-  const { showSuccess } = useAppSnackbar()
+  const { resetAllData } = useSuperAdminStore()
+  const { showError, showSuccess } = useAppSnackbar()
 
-  const handleConfirmReset = () => {
-    resetAllDemoData()
-    showSuccess('SuperAdmin demo data reset to defaults')
+  const handleConfirmReset = async () => {
+    const result = await resetAllData()
+    if (!result.ok) {
+      showError(result.error || 'Unable to refresh SuperAdmin data from backend')
+      return
+    }
+
+    showSuccess('SuperAdmin local cache reset and backend data reloaded')
     setConfirmOpen(false)
   }
 
@@ -26,10 +31,10 @@ const SettingsPage = () => {
           <Stack spacing={2}>
             <Stack spacing={0.75}>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Demo Data
+                Local Cache
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Restore all superadmin demo entities to their default seeded values.
+                Clear cached superadmin data and reload the latest records from backend admin APIs.
               </Typography>
             </Stack>
 
@@ -40,7 +45,7 @@ const SettingsPage = () => {
               onClick={() => setConfirmOpen(true)}
               sx={{ width: { xs: '100%', sm: 'fit-content' } }}
             >
-              Reset SuperAdmin Demo Data
+              Reset Cache & Reload Backend Data
             </Button>
           </Stack>
         </CardContent>
@@ -48,8 +53,8 @@ const SettingsPage = () => {
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Reset SuperAdmin demo data?"
-        description="This will restore all SuperAdmin local demo data (cities, categories, shops, orders, config, payments, payouts, refunds, coupons, subscriptions, audit logs) and clear published category bridge data. You will stay logged in."
+        title="Reset SuperAdmin local cache?"
+        description="This will clear local cached superadmin data and reload cities, categories, shops, orders, config, payments, payouts, refunds, coupons, subscriptions, commission, and audit logs from backend APIs. You will stay logged in."
         confirmLabel="Reset"
         cancelLabel="Cancel"
         onClose={() => setConfirmOpen(false)}

@@ -13,6 +13,7 @@ export type CategoryCommissionOverride = CommissionOverride & {
 
 export type ShopCommissionOverride = CommissionOverride & {
   shopId: string
+  overrideId?: string
 }
 
 export type CommissionConfig = {

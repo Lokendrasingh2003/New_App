@@ -20,7 +20,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { CreateCouponInput, UpdateCouponPatch } from '../store/types'
@@ -101,7 +101,7 @@ const initialFormState: CouponFormState = {
 }
 
 const CouponsPage = () => {
-  const { coupons, cities, categories, shops, createCoupon, updateCoupon, toggleCouponActive } = useSuperAdminStore()
+  const { coupons, cities, categories, shops, syncCoupons, createCoupon, updateCoupon, toggleCouponActive } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -116,6 +116,23 @@ const CouponsPage = () => {
   const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null)
   const [deactivateTarget, setDeactivateTarget] = useState<Coupon | null>(null)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncCoupons()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load coupons from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncCoupons])
 
   const cityMap = useMemo(() => new Map(cities.map((city) => [city.id, city.name])), [cities])
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories])
@@ -285,12 +302,10 @@ const CouponsPage = () => {
     }
   }
 
-  const handleSaveCoupon = () => {
+  const handleSaveCoupon = async () => {
     const payload = buildPayload()
 
-    const result = editingCouponId
-      ? updateCoupon(editingCouponId, payload as UpdateCouponPatch)
-      : createCoupon(payload)
+    const result = editingCouponId ? await updateCoupon(editingCouponId, payload as UpdateCouponPatch) : await createCoupon(payload)
 
     if (!result.ok) {
       showError(result.error ?? 'Could not save coupon.')
@@ -301,13 +316,13 @@ const CouponsPage = () => {
     setFormOpen(false)
   }
 
-  const requestToggleCoupon = (coupon: Coupon) => {
+  const requestToggleCoupon = async (coupon: Coupon) => {
     if (coupon.isActive) {
       setDeactivateTarget(coupon)
       return
     }
 
-    const result = toggleCouponActive(coupon.id)
+    const result = await toggleCouponActive(coupon.id)
     if (!result.ok) {
       showError(result.error ?? 'Could not update coupon status.')
       return
@@ -729,7 +744,7 @@ const CouponsPage = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setFormOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={Boolean(formValidationError)} onClick={handleSaveCoupon}>
+          <Button variant="contained" disabled={Boolean(formValidationError)} onClick={async () => await handleSaveCoupon()}>
             Save
           </Button>
         </DialogActions>
@@ -774,7 +789,7 @@ const CouponsPage = () => {
                   size="small"
                   variant="outlined"
                   color={selectedCoupon.isActive ? 'error' : 'success'}
-                  onClick={() => requestToggleCoupon(selectedCoupon)}
+                  onClick={async () => await requestToggleCoupon(selectedCoupon)}
                 >
                   {selectedCoupon.isActive ? 'Deactivate' : 'Activate'}
                 </Button>
@@ -813,12 +828,12 @@ const CouponsPage = () => {
         confirmLabel="Deactivate"
         cancelLabel="Cancel"
         onClose={() => setDeactivateTarget(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!deactivateTarget) {
             return
           }
 
-          const result = toggleCouponActive(deactivateTarget.id)
+          const result = await toggleCouponActive(deactivateTarget.id)
           if (!result.ok) {
             showError(result.error ?? 'Could not update coupon status.')
             return

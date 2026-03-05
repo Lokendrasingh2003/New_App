@@ -37,7 +37,7 @@ type SettingsErrors = {
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 const SettingsPage = () => {
-  const { shop, resetAllDemoData } = useShopkeeperStore()
+  const { shop, resetAllData } = useShopkeeperStore()
   const { shopSettings, isLoadingShop, isSavingShop, shopError, saveShopSettings } = useShopkeeper()
   const { showMessage } = useAppFeedback()
   const [confirmResetOpen, setConfirmResetOpen] = useState(false)
@@ -352,13 +352,13 @@ const SettingsPage = () => {
         <Card sx={{ border: '1px solid rgba(15,23,42,0.08)' }}>
           <CardContent>
             <Typography variant="h6" sx={{ mb: 0.8 }}>
-              Reset Demo Data
+              Reset Local Data
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Restore orders, products, offers, shop settings, and subcategories back to the initial demo state.
+              Clear locally cached orders, products, offers, shop settings and subcategories.
             </Typography>
             <Button variant="outlined" color="error" onClick={() => setConfirmResetOpen(true)} disabled={isSavingShop}>
-              Reset Demo Data
+              Reset Local Data
             </Button>
           </CardContent>
         </Card>
@@ -366,14 +366,14 @@ const SettingsPage = () => {
 
       <ConfirmDialog
         open={confirmResetOpen}
-        title="Reset demo data?"
-        description="This will restore orders, products, offers, shop settings and subcategories to default demo data."
+        title="Reset local data?"
+        description="This will clear cached orders, products, offers, shop settings and subcategories."
         confirmLabel="Reset"
         confirmColor="error"
         isDestructive
         onCancel={() => setConfirmResetOpen(false)}
         onConfirm={() => {
-          resetAllDemoData()
+          resetAllData()
           setConfirmResetOpen(false)
         }}
       />

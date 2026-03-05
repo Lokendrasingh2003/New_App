@@ -19,21 +19,6 @@ import {
   SA_SHOP_SUBSCRIPTIONS_KEY,
   SA_SHOPS_KEY,
 } from '../app/storageKeys'
-import { auditSeed } from '../data/seed/audit.seed'
-import { categoriesSeed } from '../data/seed/categories.seed'
-import { citiesSeed } from '../data/seed/cities.seed'
-import { couponsSeed } from '../data/seed/coupons.seed'
-import { commissionSeed } from '../data/seed/commission.seed'
-import { configSeed } from '../data/seed/config.seed'
-import { ordersSeed } from '../data/seed/orders.seed'
-import { payoutLogsSeed } from '../data/seed/payoutLogs.seed'
-import { payoutsSeed } from '../data/seed/payouts.seed'
-import { paymentsSeed } from '../data/seed/payments.seed'
-import { plansSeed } from '../data/seed/plans.seed'
-import { refundLogsSeed } from '../data/seed/refundLogs.seed'
-import { refundsSeed } from '../data/seed/refunds.seed'
-import { shopSubscriptionsSeed } from '../data/seed/shopSubscriptions.seed'
-import { shopsSeed } from '../data/seed/shops.seed'
 import { SYSTEM_RESET } from '../app/auditEventTypes'
 import { getLoggedInUsername } from '../auth/authStore'
 import type { AuditEvent, AuditEventMeta, AuditEventType } from '../types/AuditEvent'
@@ -44,15 +29,84 @@ import type {
   CommissionScope,
 } from '../types/CommissionConfig'
 import type { City } from '../types/City'
-import type { Order, OrderStatus, PaymentStatus } from '../types/Order'
-import type { Payment, PaymentStatus as GatewayPaymentStatus } from '../types/Payment'
-import type { PayoutLogEntry, PayoutRequest, PayoutRequestStatus } from '../types/Payout'
-import type { RefundLogEntry, RefundRecord, RefundStatus } from '../types/Refund'
-import type { Shop, ShopStatus } from '../types/shop'
+import type { Order, OrderStatus } from '../types/Order'
+import type { Payment } from '../types/Payment'
+import type { PayoutLogEntry, PayoutRequest } from '../types/Payout'
+import type { RefundLogEntry, RefundRecord } from '../types/Refund'
+import type { Shop } from '../types/shop'
 import type { ShopSubscription, SubscriptionPlan, SubscriptionStatus } from '../types/Subscription'
 import type { SystemConfig } from '../types/SystemConfig'
 import { useAppSnackbar } from '../ui/AppSnackbarProvider'
 import { loadFromStorage, saveToStorage } from '../utils/storage'
+import {
+  createAdminCity,
+  listAdminCities,
+  toggleAdminCityActive,
+  toggleAdminCityDelivery,
+  updateAdminCity,
+} from '../services/adminCitiesService'
+import {
+  addAdminSubcategory,
+  createAdminCategory,
+  listAdminCategories,
+  publishAdminCategory,
+  removeAdminSubcategory,
+  updateAdminCategory,
+} from '../services/adminCategoriesService'
+import {
+  approveAdminShop,
+  listAdminShops,
+  reactivateAdminShop,
+  rejectAdminShop,
+  suspendAdminShop,
+  toggleAdminShopPublic,
+} from '../services/adminShopsService'
+import {
+  forceCancelAdminOrder,
+  listAdminOrders,
+  triggerAdminRefund,
+} from '../services/adminOrdersService'
+import {
+  listAdminPayments,
+  retryVerifyAdminPayment,
+} from '../services/adminPaymentsService'
+import {
+  approveAdminPayout,
+  completeAdminPayout,
+  listAdminPayouts,
+  rejectAdminPayout,
+} from '../services/adminPayoutsService'
+import {
+  completeAdminRefund,
+  createAdminRefund,
+  failAdminRefund,
+  listAdminRefunds,
+  processAdminRefund,
+} from '../services/adminRefundsService'
+import {
+  createAdminCoupon,
+  listAdminCoupons,
+  toggleAdminCouponActive,
+  updateAdminCoupon,
+} from '../services/adminCouponsService'
+import {
+  listAdminShopSubscriptions,
+  listAdminSubscriptionPlans,
+  toggleAdminSubscriptionPlanActive,
+  updateAdminSubscriptionPlan,
+} from '../services/adminSubscriptionsService'
+import {
+  listAdminConfig,
+  updateAdminConfigValue,
+} from '../services/adminConfigService'
+import {
+  createAdminShopCommissionOverride,
+  getAdminDefaultCommission,
+  listAdminShopCommissionOverrides,
+  removeAdminShopCommissionOverride,
+  updateAdminDefaultCommission,
+} from '../services/adminCommissionService'
+import { listAdminAuditEvents } from '../services/adminAuditService'
 import type {
   ActionResult,
   CategoryUpdatePatch,
@@ -66,22 +120,14 @@ import type {
 
 const STORAGE_WARNING_MESSAGE = 'Could not save locally. Changes may reset on refresh.'
 
-const seedCities: City[] = citiesSeed
-const seedCategories: Category[] = categoriesSeed
-const seedCoupons: Coupon[] = couponsSeed
-const seedShops: Shop[] = shopsSeed
-const seedOrders: Order[] = ordersSeed
-const seedPayments: Payment[] = paymentsSeed
-const seedPayoutRequests: PayoutRequest[] = payoutsSeed
-const seedPayoutLogs: PayoutLogEntry[] = payoutLogsSeed
-const seedRefunds: RefundRecord[] = refundsSeed
-const seedRefundLogs: RefundLogEntry[] = refundLogsSeed
-const seedPlans: SubscriptionPlan[] = plansSeed
-const seedShopSubscriptions: ShopSubscription[] = shopSubscriptionsSeed
-const seedConfig: SystemConfig[] = configSeed
-const seedCommission: CommissionConfig = commissionSeed
-const seedAuditEvents: AuditEvent[] = auditSeed
-const MIN_SUBCATEGORIES = 5
+const DEFAULT_COMMISSION: CommissionConfig = {
+  defaultPercentage: 0,
+  cityOverrides: [],
+  categoryOverrides: [],
+  shopOverrides: [],
+  updatedAt: new Date().toISOString(),
+}
+const MIN_SUBCATEGORIES = 0
 const MAX_SUBCATEGORIES = 8
 const MAX_SHOP_SLUG_LENGTH = 25
 const BOOLEAN_CONFIG_KEYS = new Set(['maintenance_mode', 'launch_offer_enabled'])
@@ -188,6 +234,7 @@ const normalizeCommission = (value: CommissionConfig): CommissionConfig => {
           shopId: item.shopId,
           percentage: normalizePercentage(item.percentage),
           updatedAt: item.updatedAt,
+          overrideId: item.overrideId,
         }))
       : [],
     updatedAt: value.updatedAt ?? nowIso(),
@@ -242,37 +289,9 @@ const normalizeShopSubscription = (subscription: ShopSubscription): ShopSubscrip
 
 const isValidPercentage = (value: number) => Number.isFinite(value) && !Number.isNaN(value) && value >= 0 && value <= 100
 
-const PAYMENT_VERIFY_FAILURE_REASONS = [
-  'Gateway verification timed out',
-  'Gateway signature mismatch on retry',
-  'Bank verification rejected',
-]
-
-const deterministicScore = (value: string) => {
-  return value.split('').reduce((sum, character, index) => sum + character.charCodeAt(0) * (index + 1), 0)
-}
-
 const ensureRequiredConfigKeys = (items: SystemConfig[]) => {
   const map = new Map(items.map((item) => [item.key, item]))
-
-  seedConfig.forEach((seedItem) => {
-    if (!map.has(seedItem.key)) {
-      map.set(seedItem.key, seedItem)
-    }
-  })
-
   return Array.from(map.values())
-}
-
-const defaultSubcategoriesForCategory = (categoryName: string): string[] => {
-  const baseName = normalizeName(categoryName)
-  return [
-    `${baseName} Essentials`,
-    `${baseName} Premium`,
-    `${baseName} Budget Picks`,
-    `${baseName} New Arrivals`,
-    `${baseName} Best Sellers`,
-  ]
 }
 
 const validateCityInput = (
@@ -529,19 +548,6 @@ const validateCouponInput = (
   return { normalized }
 }
 
-const buildRefundLogEntry = (
-  refundId: string,
-  action: 'CREATED' | 'PROCESSING' | 'COMPLETED' | 'FAILED',
-  at: string,
-  note?: string,
-): RefundLogEntry => ({
-  id: `refund_log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-  refundId,
-  action,
-  note,
-  at,
-})
-
 export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderProps) => {
   const { showWarning } = useAppSnackbar()
 
@@ -558,7 +564,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [shopSubscriptions, setShopSubscriptions] = useState<ShopSubscription[]>([])
   const [config, setConfig] = useState<SystemConfig[]>([])
-  const [commission, setCommission] = useState<CommissionConfig>(seedCommission)
+  const [commission, setCommission] = useState<CommissionConfig>(DEFAULT_COMMISSION)
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
   const [initialized, setInitialized] = useState(false)
   const [lastError, setLastError] = useState<string | undefined>(undefined)
@@ -591,31 +597,31 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
     [persist, showWarning],
   )
 
-  const initializeFromStorageOrSeed = useCallback(() => {
-    const loadedCities = loadFromStorage<City[]>(SA_CITIES_KEY, seedCities).map((city) =>
+  const initializeFromStorage = useCallback(() => {
+    const loadedCities = loadFromStorage<City[]>(SA_CITIES_KEY, []).map((city) =>
       normalizeCity(city as City & { commissionOverride?: number }),
     )
-    const loadedCategories = loadFromStorage<Category[]>(SA_CATEGORIES_KEY, seedCategories).map((category) =>
+    const loadedCategories = loadFromStorage<Category[]>(SA_CATEGORIES_KEY, []).map((category) =>
       normalizeCategory(category as Category & { active?: boolean }),
     )
-    const loadedShops = loadFromStorage<Shop[]>(SA_SHOPS_KEY, seedShops)
-    const loadedOrders = loadFromStorage<Order[]>(SA_ORDERS_KEY, seedOrders).map((order) =>
+    const loadedShops = loadFromStorage<Shop[]>(SA_SHOPS_KEY, [])
+    const loadedOrders = loadFromStorage<Order[]>(SA_ORDERS_KEY, []).map((order) =>
       normalizeOrder(order as Order & { statusLogs?: Array<{ status: string; at: string; note?: string }> }),
     )
-    const loadedPayments = loadFromStorage<Payment[]>(SA_PAYMENTS_KEY, seedPayments)
-    const loadedPayoutRequests = loadFromStorage<PayoutRequest[]>(SA_PAYOUTS_KEY, seedPayoutRequests)
-    const loadedPayoutLogs = loadFromStorage<PayoutLogEntry[]>(SA_PAYOUT_LOGS_KEY, seedPayoutLogs)
-    const loadedRefunds = loadFromStorage<RefundRecord[]>(SA_REFUNDS_KEY, seedRefunds)
-    const loadedRefundLogs = loadFromStorage<RefundLogEntry[]>(SA_REFUND_LOGS_KEY, seedRefundLogs)
-    const loadedCoupons = loadFromStorage<Coupon[]>(SA_COUPONS_KEY, seedCoupons).map((coupon) => normalizeCoupon(coupon))
-    const loadedPlans = loadFromStorage<SubscriptionPlan[]>(SA_PLANS_KEY, seedPlans).map((plan) => normalizePlan(plan))
+    const loadedPayments = loadFromStorage<Payment[]>(SA_PAYMENTS_KEY, [])
+    const loadedPayoutRequests = loadFromStorage<PayoutRequest[]>(SA_PAYOUTS_KEY, [])
+    const loadedPayoutLogs = loadFromStorage<PayoutLogEntry[]>(SA_PAYOUT_LOGS_KEY, [])
+    const loadedRefunds = loadFromStorage<RefundRecord[]>(SA_REFUNDS_KEY, [])
+    const loadedRefundLogs = loadFromStorage<RefundLogEntry[]>(SA_REFUND_LOGS_KEY, [])
+    const loadedCoupons = loadFromStorage<Coupon[]>(SA_COUPONS_KEY, []).map((coupon) => normalizeCoupon(coupon))
+    const loadedPlans = loadFromStorage<SubscriptionPlan[]>(SA_PLANS_KEY, []).map((plan) => normalizePlan(plan))
     const loadedShopSubscriptions = loadFromStorage<ShopSubscription[]>(
       SA_SHOP_SUBSCRIPTIONS_KEY,
-      seedShopSubscriptions,
+      [],
     ).map((subscription) => normalizeShopSubscription(subscription))
-    const loadedConfig = ensureRequiredConfigKeys(loadFromStorage<SystemConfig[]>(SA_CONFIG_KEY, seedConfig))
-    const loadedCommission = normalizeCommission(loadFromStorage<CommissionConfig>(SA_COMMISSION_KEY, seedCommission))
-    const loadedAuditEvents = loadFromStorage<AuditEvent[]>(SA_AUDIT_KEY, seedAuditEvents)
+    const loadedConfig = ensureRequiredConfigKeys(loadFromStorage<SystemConfig[]>(SA_CONFIG_KEY, []))
+    const loadedCommission = normalizeCommission(loadFromStorage<CommissionConfig>(SA_COMMISSION_KEY, DEFAULT_COMMISSION))
+    const loadedAuditEvents = loadFromStorage<AuditEvent[]>(SA_AUDIT_KEY, [])
       .map((event) => normalizeAuditEvent(event))
       .slice(-200)
 
@@ -655,7 +661,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
     setInitialized(true)
   }, [persist])
 
-  const resetAllDemoData = useCallback(() => {
+  const resetAllData = useCallback(async (): Promise<ActionResult> => {
     try {
       localStorage.removeItem(SA_CITIES_KEY)
       localStorage.removeItem(SA_CATEGORIES_KEY)
@@ -678,39 +684,91 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       showWarning(STORAGE_WARNING_MESSAGE)
     }
 
-    setCities(seedCities)
-    setCategories(seedCategories)
-    setShops(seedShops)
-    setOrders(seedOrders)
-    setPayments(seedPayments)
-    setPayoutRequests(seedPayoutRequests)
-    setPayoutLogs(seedPayoutLogs)
-    setRefunds(seedRefunds)
-    setRefundLogs(seedRefundLogs)
-    setCoupons(seedCoupons)
-    setPlans(seedPlans)
-    setShopSubscriptions(seedShopSubscriptions)
-    setConfig(seedConfig)
-    setCommission(seedCommission)
+    try {
+      const [
+        nextCities,
+        nextCategories,
+        nextShops,
+        nextOrders,
+        nextPayments,
+        nextPayoutRequests,
+        nextRefundData,
+        nextCoupons,
+        nextPlans,
+        nextShopSubscriptions,
+        nextConfig,
+        defaultPercentage,
+        shopOverrides,
+        nextAuditEvents,
+      ] = await Promise.all([
+        listAdminCities(),
+        listAdminCategories(),
+        listAdminShops(),
+        listAdminOrders(),
+        listAdminPayments(),
+        listAdminPayouts(),
+        listAdminRefunds(),
+        listAdminCoupons(),
+        listAdminSubscriptionPlans(),
+        listAdminShopSubscriptions(),
+        listAdminConfig(),
+        getAdminDefaultCommission(),
+        listAdminShopCommissionOverrides(),
+        listAdminAuditEvents(),
+      ])
 
-    setAuditEvents(seedAuditEvents)
+      setCities(nextCities)
+      setCategories(nextCategories)
+      setShops(nextShops)
+      setOrders(nextOrders)
+      setPayments(nextPayments)
+      setPayoutRequests(nextPayoutRequests)
+      setPayoutLogs([])
+      setRefunds(nextRefundData.refunds)
+      setRefundLogs(nextRefundData.logs)
+      setCoupons(nextCoupons)
+      setPlans(nextPlans)
+      setShopSubscriptions(nextShopSubscriptions)
+      setConfig(nextConfig)
+      setAuditEvents(nextAuditEvents)
 
-    persist(SA_CITIES_KEY, seedCities)
-    persist(SA_CATEGORIES_KEY, seedCategories)
-    persist(SA_SHOPS_KEY, seedShops)
-    persist(SA_ORDERS_KEY, seedOrders)
-    persist(SA_PAYMENTS_KEY, seedPayments)
-    persist(SA_PAYOUTS_KEY, seedPayoutRequests)
-    persist(SA_PAYOUT_LOGS_KEY, seedPayoutLogs)
-    persist(SA_REFUNDS_KEY, seedRefunds)
-    persist(SA_REFUND_LOGS_KEY, seedRefundLogs)
-    persist(SA_COUPONS_KEY, seedCoupons)
-    persist(SA_PLANS_KEY, seedPlans)
-    persist(SA_SHOP_SUBSCRIPTIONS_KEY, seedShopSubscriptions)
-    persist(SA_CONFIG_KEY, seedConfig)
-    persist(SA_COMMISSION_KEY, seedCommission)
-    persist(SA_AUDIT_KEY, seedAuditEvents)
-    pushAuditEvent(SYSTEM_RESET, 'System reset to demo seed data')
+      setCommission((previous) => {
+        const next = normalizeCommission({
+          ...previous,
+          defaultPercentage,
+          shopOverrides: shopOverrides.map((item) => ({
+            shopId: item.shopId,
+            percentage: item.percentage,
+            updatedAt: item.updatedAt,
+            overrideId: item.overrideId,
+          })),
+          updatedAt: nowIso(),
+        })
+        persist(SA_COMMISSION_KEY, next)
+        return next
+      })
+
+      persist(SA_CITIES_KEY, nextCities)
+      persist(SA_CATEGORIES_KEY, nextCategories)
+      persist(SA_SHOPS_KEY, nextShops)
+      persist(SA_ORDERS_KEY, nextOrders)
+      persist(SA_PAYMENTS_KEY, nextPayments)
+      persist(SA_PAYOUTS_KEY, nextPayoutRequests)
+      persist(SA_PAYOUT_LOGS_KEY, [])
+      persist(SA_REFUNDS_KEY, nextRefundData.refunds)
+      persist(SA_REFUND_LOGS_KEY, nextRefundData.logs)
+      persist(SA_COUPONS_KEY, nextCoupons)
+      persist(SA_PLANS_KEY, nextPlans)
+      persist(SA_SHOP_SUBSCRIPTIONS_KEY, nextShopSubscriptions)
+      persist(SA_CONFIG_KEY, nextConfig)
+      persist(SA_AUDIT_KEY, nextAuditEvents)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to refresh all settings data from backend.'
+      return { ok: false, error: message }
+    }
+
+    pushAuditEvent(SYSTEM_RESET, 'SuperAdmin local cache reset and backend data re-synced')
+    return { ok: true }
   }, [persist, pushAuditEvent, showWarning])
 
   const appendAuditEvent = useCallback(
@@ -731,40 +789,244 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
     }
   }, [persist, showWarning])
 
+  const syncCities = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextCities = await listAdminCities()
+      setCities(nextCities)
+      persist(SA_CITIES_KEY, nextCities)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync cities.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncCategories = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextCategories = await listAdminCategories()
+      setCategories(nextCategories)
+      persist(SA_CATEGORIES_KEY, nextCategories)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync categories.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncShops = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextShops = await listAdminShops()
+      setShops(nextShops)
+      persist(SA_SHOPS_KEY, nextShops)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync shops.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncOrders = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextOrders = await listAdminOrders()
+      setOrders(nextOrders)
+      persist(SA_ORDERS_KEY, nextOrders)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync orders.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncPayments = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextPayments = await listAdminPayments()
+      const cityIdByShop = new Map(shops.map((shop) => [shop.id, shop.cityId]))
+      const normalizedPayments = nextPayments.map((payment) => ({
+        ...payment,
+        cityId: payment.cityId || cityIdByShop.get(payment.shopId) || '',
+      }))
+
+      setPayments(normalizedPayments)
+      persist(SA_PAYMENTS_KEY, normalizedPayments)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync payments.'
+      return { ok: false, error: message }
+    }
+  }, [persist, shops])
+
+  const syncPayouts = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextRequests = await listAdminPayouts()
+      setPayoutRequests(nextRequests)
+      persist(SA_PAYOUTS_KEY, nextRequests)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync payouts.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncRefunds = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const { refunds: nextRefunds, logs: nextLogs } = await listAdminRefunds()
+      setRefunds(nextRefunds)
+      setRefundLogs(nextLogs)
+      persist(SA_REFUNDS_KEY, nextRefunds)
+      persist(SA_REFUND_LOGS_KEY, nextLogs)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync refunds.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncCoupons = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextCoupons = await listAdminCoupons()
+      setCoupons(nextCoupons)
+      persist(SA_COUPONS_KEY, nextCoupons)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync coupons.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncPlans = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextPlans = await listAdminSubscriptionPlans()
+      setPlans(nextPlans)
+      persist(SA_PLANS_KEY, nextPlans)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync subscription plans.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncShopSubscriptions = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextSubscriptions = await listAdminShopSubscriptions()
+      setShopSubscriptions(nextSubscriptions)
+      persist(SA_SHOP_SUBSCRIPTIONS_KEY, nextSubscriptions)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync shop subscriptions.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncConfig = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextConfig = await listAdminConfig()
+      setConfig(nextConfig)
+      persist(SA_CONFIG_KEY, nextConfig)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync config.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncCommission = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const [defaultPercentage, shopOverrides] = await Promise.all([
+        getAdminDefaultCommission(),
+        listAdminShopCommissionOverrides(),
+      ])
+
+      const timestamp = nowIso()
+      setCommission((previous) => {
+        const next = normalizeCommission({
+          ...previous,
+          defaultPercentage,
+          shopOverrides: shopOverrides.map((item) => ({
+            shopId: item.shopId,
+            percentage: item.percentage,
+            updatedAt: item.updatedAt,
+            overrideId: item.overrideId,
+          })),
+          updatedAt: timestamp,
+        })
+        persist(SA_COMMISSION_KEY, next)
+        return next
+      })
+
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync commission.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
+  const syncAuditEvents = useCallback(async (): Promise<ActionResult> => {
+    try {
+      const nextEvents = await listAdminAuditEvents()
+      setAuditEvents(nextEvents)
+      persist(SA_AUDIT_KEY, nextEvents)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync audit logs.'
+      return { ok: false, error: message }
+    }
+  }, [persist])
+
   const addCity = useCallback(
-    (input: CityUpsertInput): ActionResult => {
+    async (input: CityUpsertInput): Promise<ActionResult> => {
       const validation = validateCityInput(input, cities)
 
       if (validation.error) {
         return { ok: false, error: validation.error }
       }
 
-      const timestamp = nowIso()
-      const city: City = {
-        id: `city_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        name: validation.normalized.name,
-        slug: validation.normalized.slug,
-        isActive: validation.normalized.isActive,
-        deliveryEnabled: validation.normalized.deliveryEnabled,
-        commissionOverridePercentage: validation.normalized.commissionOverridePercentage ?? null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+      try {
+        const city = await createAdminCity(validation.normalized)
+        const commissionOverridePercentage = validation.normalized.commissionOverridePercentage ?? null
+        const cityWithCommission = {
+          ...city,
+          commissionOverridePercentage,
+        }
+
+        setCities((previous) => {
+          const next = [...previous, cityWithCommission]
+          persist(SA_CITIES_KEY, next)
+          return next
+        })
+
+        if (commissionOverridePercentage !== null) {
+          const timestamp = nowIso()
+          setCommission((previous) => {
+            const existingIndex = previous.cityOverrides.findIndex((item) => item.cityId === city.id)
+            const nextCityOverrides =
+              existingIndex >= 0
+                ? previous.cityOverrides.map((item, index) =>
+                    index === existingIndex ? { cityId: city.id, percentage: commissionOverridePercentage, updatedAt: timestamp } : item,
+                  )
+                : [...previous.cityOverrides, { cityId: city.id, percentage: commissionOverridePercentage, updatedAt: timestamp }]
+
+            const nextCommission = normalizeCommission({
+              ...previous,
+              cityOverrides: nextCityOverrides,
+              updatedAt: timestamp,
+            })
+            persist(SA_COMMISSION_KEY, nextCommission)
+            return nextCommission
+          })
+        }
+
+        pushAuditEvent('CITY_CREATED', `City created: ${city.name}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create city.'
+        return { ok: false, error: message }
       }
-
-      setCities((previous) => {
-        const next = [...previous, city]
-        persist(SA_CITIES_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('CITY_CREATED', `City created: ${city.name}`)
-      return { ok: true }
     },
     [cities, persist, pushAuditEvent],
   )
 
   const updateCity = useCallback(
-    (cityId: string, patch: Partial<CityUpsertInput>): ActionResult => {
+    async (cityId: string, patch: Partial<CityUpsertInput>): Promise<ActionResult> => {
       const currentCity = cities.find((city) => city.id === cityId)
 
       if (!currentCity) {
@@ -788,35 +1050,61 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: validation.error }
       }
 
-      const timestamp = nowIso()
+      try {
+        const updatedCity = await updateAdminCity(cityId, validation.normalized)
+        const commissionOverridePercentage = validation.normalized.commissionOverridePercentage ?? null
+        const cityWithCommission = {
+          ...updatedCity,
+          commissionOverridePercentage,
+        }
 
-      setCities((previous) => {
-        const next = previous.map((city) =>
-          city.id === cityId
-            ? {
-                ...city,
-                name: validation.normalized.name,
-                slug: validation.normalized.slug,
-                isActive: validation.normalized.isActive,
-                deliveryEnabled: validation.normalized.deliveryEnabled,
-                commissionOverridePercentage: validation.normalized.commissionOverridePercentage ?? null,
-                updatedAt: timestamp,
-              }
-            : city,
-        )
+        setCities((previous) => {
+          const next = previous.map((city) => (city.id === cityId ? cityWithCommission : city))
 
-        persist(SA_CITIES_KEY, next)
-        return next
-      })
+          persist(SA_CITIES_KEY, next)
+          return next
+        })
 
-      pushAuditEvent('CITY_UPDATED', `City updated: ${validation.normalized.name}`)
-      return { ok: true }
+        const timestamp = nowIso()
+        setCommission((previous) => {
+          const nextCityOverrides =
+            commissionOverridePercentage === null
+              ? previous.cityOverrides.filter((item) => item.cityId !== cityId)
+              : (() => {
+                  const existingIndex = previous.cityOverrides.findIndex((item) => item.cityId === cityId)
+                  if (existingIndex >= 0) {
+                    return previous.cityOverrides.map((item, index) =>
+                      index === existingIndex
+                        ? { cityId, percentage: commissionOverridePercentage, updatedAt: timestamp }
+                        : item,
+                    )
+                  }
+
+                  return [...previous.cityOverrides, { cityId, percentage: commissionOverridePercentage, updatedAt: timestamp }]
+                })()
+
+          const nextCommission = normalizeCommission({
+            ...previous,
+            cityOverrides: nextCityOverrides,
+            updatedAt: timestamp,
+          })
+
+          persist(SA_COMMISSION_KEY, nextCommission)
+          return nextCommission
+        })
+
+        pushAuditEvent('CITY_UPDATED', `City updated: ${cityWithCommission.name}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update city.'
+        return { ok: false, error: message }
+      }
     },
     [cities, persist, pushAuditEvent],
   )
 
   const toggleCityActive = useCallback(
-    (cityId: string): ActionResult => {
+    async (cityId: string): Promise<ActionResult> => {
       const currentCity = cities.find((city) => city.id === cityId)
 
       if (!currentCity) {
@@ -825,33 +1113,32 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
 
       const nextIsActive = !currentCity.isActive
 
-      setCities((previous) => {
-        const next = previous.map((city) =>
-          city.id === cityId
-            ? {
-                ...city,
-                isActive: nextIsActive,
-                updatedAt: nowIso(),
-              }
-            : city,
+      try {
+        const updatedCity = await toggleAdminCityActive(cityId, nextIsActive)
+
+        setCities((previous) => {
+          const next = previous.map((city) => (city.id === cityId ? updatedCity : city))
+
+          persist(SA_CITIES_KEY, next)
+          return next
+        })
+
+        pushAuditEvent(
+          'CITY_TOGGLED_ACTIVE',
+          `City ${nextIsActive ? 'activated' : 'deactivated'}: ${currentCity.name}`,
         )
 
-        persist(SA_CITIES_KEY, next)
-        return next
-      })
-
-      pushAuditEvent(
-        'CITY_TOGGLED_ACTIVE',
-        `City ${nextIsActive ? 'activated' : 'deactivated'}: ${currentCity.name}`,
-      )
-
-      return { ok: true }
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update city status.'
+        return { ok: false, error: message }
+      }
     },
     [cities, persist, pushAuditEvent],
   )
 
   const toggleCityDelivery = useCallback(
-    (cityId: string): ActionResult => {
+    async (cityId: string): Promise<ActionResult> => {
       const currentCity = cities.find((city) => city.id === cityId)
 
       if (!currentCity) {
@@ -860,33 +1147,32 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
 
       const nextDeliveryEnabled = !currentCity.deliveryEnabled
 
-      setCities((previous) => {
-        const next = previous.map((city) =>
-          city.id === cityId
-            ? {
-                ...city,
-                deliveryEnabled: nextDeliveryEnabled,
-                updatedAt: nowIso(),
-              }
-            : city,
+      try {
+        const updatedCity = await toggleAdminCityDelivery(cityId, nextDeliveryEnabled)
+
+        setCities((previous) => {
+          const next = previous.map((city) => (city.id === cityId ? updatedCity : city))
+
+          persist(SA_CITIES_KEY, next)
+          return next
+        })
+
+        pushAuditEvent(
+          'CITY_TOGGLED_DELIVERY',
+          `City delivery ${nextDeliveryEnabled ? 'enabled' : 'disabled'}: ${currentCity.name}`,
         )
 
-        persist(SA_CITIES_KEY, next)
-        return next
-      })
-
-      pushAuditEvent(
-        'CITY_TOGGLED_DELIVERY',
-        `City delivery ${nextDeliveryEnabled ? 'enabled' : 'disabled'}: ${currentCity.name}`,
-      )
-
-      return { ok: true }
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update city delivery status.'
+        return { ok: false, error: message }
+      }
     },
     [cities, persist, pushAuditEvent],
   )
 
   const addCategory = useCallback(
-    (name: string): ActionResult => {
+    async (name: string): Promise<ActionResult> => {
       const normalizedName = normalizeName(name)
 
       if (!normalizedName) {
@@ -909,31 +1195,27 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Category slug must be unique.' }
       }
 
-      const timestamp = nowIso()
-      const category: Category = {
-        id: `cat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        name: normalizedName,
-        slug,
-        isActive: true,
-        subcategories: defaultSubcategoriesForCategory(normalizedName),
-        createdAt: timestamp,
-        updatedAt: timestamp,
+      try {
+        const category = await createAdminCategory(normalizedName)
+
+        setCategories((previous) => {
+          const next = [...previous, category]
+          persist(SA_CATEGORIES_KEY, next)
+          return next
+        })
+
+        pushAuditEvent('CATEGORY_CREATED', `Category created: ${category.name}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create category.'
+        return { ok: false, error: message }
       }
-
-      setCategories((previous) => {
-        const next = [...previous, category]
-        persist(SA_CATEGORIES_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('CATEGORY_CREATED', `Category created: ${category.name}`)
-      return { ok: true }
     },
     [categories, persist, pushAuditEvent],
   )
 
   const updateCategory = useCallback(
-    (categoryId: string, patch: CategoryUpdatePatch): ActionResult => {
+    async (categoryId: string, patch: CategoryUpdatePatch): Promise<ActionResult> => {
       const currentCategory = categories.find((category) => category.id === categoryId)
 
       if (!currentCategory) {
@@ -966,41 +1248,41 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       }
 
       const nextIsActive = patch.isActive ?? currentCategory.isActive
-      const timestamp = nowIso()
 
-      setCategories((previous) => {
-        const next = previous.map((category) =>
-          category.id === categoryId
-            ? {
-                ...category,
-                name: nextName,
-                slug: nextSlug,
-                isActive: nextIsActive,
-                updatedAt: timestamp,
-              }
-            : category,
+      try {
+        const updatedCategory = await updateAdminCategory(
+          categoryId,
+          { name: nextName, isActive: nextIsActive },
+          currentCategory,
         )
 
-        persist(SA_CATEGORIES_KEY, next)
-        return next
-      })
+        setCategories((previous) => {
+          const next = previous.map((category) => (category.id === categoryId ? updatedCategory : category))
 
-      if (patch.isActive !== undefined && patch.isActive !== currentCategory.isActive) {
-        pushAuditEvent(
-          'CATEGORY_TOGGLED_ACTIVE',
-          `Category ${nextIsActive ? 'activated' : 'deactivated'}: ${nextName}`,
-        )
-      } else {
-        pushAuditEvent('CATEGORY_UPDATED', `Category updated: ${nextName}`)
+          persist(SA_CATEGORIES_KEY, next)
+          return next
+        })
+
+        if (patch.isActive !== undefined && patch.isActive !== currentCategory.isActive) {
+          pushAuditEvent(
+            'CATEGORY_TOGGLED_ACTIVE',
+            `Category ${nextIsActive ? 'activated' : 'deactivated'}: ${nextName}`,
+          )
+        } else {
+          pushAuditEvent('CATEGORY_UPDATED', `Category updated: ${nextName}`)
+        }
+
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update category.'
+        return { ok: false, error: message }
       }
-
-      return { ok: true }
     },
     [categories, persist, pushAuditEvent],
   )
 
   const addSubcategory = useCallback(
-    (categoryId: string, name: string): ActionResult => {
+    async (categoryId: string, name: string): Promise<ActionResult> => {
       const currentCategory = categories.find((category) => category.id === categoryId)
 
       if (!currentCategory) {
@@ -1023,30 +1305,28 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Subcategory must be unique in this category.' }
       }
 
-      const timestamp = nowIso()
-      setCategories((previous) => {
-        const next = previous.map((category) =>
-          category.id === categoryId
-            ? {
-                ...category,
-                subcategories: [...category.subcategories, normalizedSubcategory],
-                updatedAt: timestamp,
-              }
-            : category,
-        )
+      try {
+        const updatedCategory = await addAdminSubcategory(categoryId, normalizedSubcategory)
 
-        persist(SA_CATEGORIES_KEY, next)
-        return next
-      })
+        setCategories((previous) => {
+          const next = previous.map((category) => (category.id === categoryId ? updatedCategory : category))
 
-      pushAuditEvent('SUBCATEGORY_ADDED', `Subcategory added to ${currentCategory.name}: ${normalizedSubcategory}`)
-      return { ok: true }
+          persist(SA_CATEGORIES_KEY, next)
+          return next
+        })
+
+        pushAuditEvent('SUBCATEGORY_ADDED', `Subcategory added to ${currentCategory.name}: ${normalizedSubcategory}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to add subcategory.'
+        return { ok: false, error: message }
+      }
     },
     [categories, persist, pushAuditEvent],
   )
 
   const removeSubcategory = useCallback(
-    (categoryId: string, name: string): ActionResult => {
+    async (categoryId: string, name: string): Promise<ActionResult> => {
       const currentCategory = categories.find((category) => category.id === categoryId)
 
       if (!currentCategory) {
@@ -1054,7 +1334,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       }
 
       if (currentCategory.subcategories.length <= MIN_SUBCATEGORIES) {
-        return { ok: false, error: `At least ${MIN_SUBCATEGORIES} subcategories are required.` }
+        return { ok: false, error: 'No subcategories left to remove.' }
       }
 
       const exists = currentCategory.subcategories.some((subcategory) => subcategory === name)
@@ -1062,24 +1342,22 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Subcategory not found.' }
       }
 
-      const timestamp = nowIso()
-      setCategories((previous) => {
-        const next = previous.map((category) =>
-          category.id === categoryId
-            ? {
-                ...category,
-                subcategories: category.subcategories.filter((subcategory) => subcategory !== name),
-                updatedAt: timestamp,
-              }
-            : category,
-        )
+      try {
+        const updatedCategory = await removeAdminSubcategory(categoryId, name)
 
-        persist(SA_CATEGORIES_KEY, next)
-        return next
-      })
+        setCategories((previous) => {
+          const next = previous.map((category) => (category.id === categoryId ? updatedCategory : category))
 
-      pushAuditEvent('SUBCATEGORY_REMOVED', `Subcategory removed from ${currentCategory.name}: ${name}`)
-      return { ok: true }
+          persist(SA_CATEGORIES_KEY, next)
+          return next
+        })
+
+        pushAuditEvent('SUBCATEGORY_REMOVED', `Subcategory removed from ${currentCategory.name}: ${name}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to remove subcategory.'
+        return { ok: false, error: message }
+      }
     },
     [categories, persist, pushAuditEvent],
   )
@@ -1094,12 +1372,8 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
     [categories],
   )
 
-  const publishCategories = useCallback((): ActionResult => {
+  const publishCategories = useCallback(async (): Promise<ActionResult> => {
     const activeCategories = categories.filter((category) => category.isActive)
-
-    if (activeCategories.length < 5) {
-      return { ok: false, error: 'At least 5 active categories are required before publish.' }
-    }
 
     const invalidCategories = activeCategories.filter(
       (category) => category.subcategories.length < MIN_SUBCATEGORIES || category.subcategories.length > MAX_SUBCATEGORIES,
@@ -1111,27 +1385,45 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         .join(', ')
       return {
         ok: false,
-        error: `Active categories must have ${MIN_SUBCATEGORIES}-${MAX_SUBCATEGORIES} subcategories. Invalid: ${details}.`,
+        error: `Active categories can have at most ${MAX_SUBCATEGORIES} subcategories. Invalid: ${details}.`,
       }
     }
 
-    const publishedAt = nowIso()
-    const categoriesResult = saveToStorage(CC_PUBLISHED_CATEGORIES_KEY, activeCategories)
-    const metaResult = saveToStorage(CC_PUBLISHED_META_KEY, { publishedAt })
+    try {
+      for (const category of activeCategories) {
+        if (category.status === 'PUBLISHED') {
+          continue
+        }
 
-    if (!categoriesResult.ok || !metaResult.ok) {
-      const message = categoriesResult.error ?? metaResult.error ?? STORAGE_WARNING_MESSAGE
-      setLastError(message)
-      showWarning(STORAGE_WARNING_MESSAGE)
-      return { ok: false, error: 'Could not publish categories to local storage.' }
+        await publishAdminCategory(category.id)
+      }
+
+      const refreshedCategories = await listAdminCategories()
+      setCategories(refreshedCategories)
+      persist(SA_CATEGORIES_KEY, refreshedCategories)
+
+      const refreshedActive = refreshedCategories.filter((category) => category.isActive)
+      const publishedAt = nowIso()
+      const categoriesResult = saveToStorage(CC_PUBLISHED_CATEGORIES_KEY, refreshedActive)
+      const metaResult = saveToStorage(CC_PUBLISHED_META_KEY, { publishedAt })
+
+      if (!categoriesResult.ok || !metaResult.ok) {
+        const message = categoriesResult.error ?? metaResult.error ?? STORAGE_WARNING_MESSAGE
+        setLastError(message)
+        showWarning(STORAGE_WARNING_MESSAGE)
+        return { ok: false, error: 'Could not publish categories to local storage.' }
+      }
+
+      pushAuditEvent('CATEGORY_PUBLISHED', `Published ${refreshedActive.length} active categories`)
+      return { ok: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to publish categories.'
+      return { ok: false, error: message }
     }
-
-    pushAuditEvent('CATEGORY_PUBLISHED', `Published ${activeCategories.length} active categories`)
-    return { ok: true }
   }, [categories, pushAuditEvent, showWarning])
 
   const approveShop = useCallback(
-    (shopId: string): ActionResult => {
+    async (shopId: string): Promise<ActionResult> => {
       const currentShop = shops.find((shop) => shop.id === shopId)
 
       if (!currentShop) {
@@ -1142,33 +1434,28 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Only pending approval shops can be approved.' }
       }
 
-      const approvedStatus: ShopStatus = 'approved'
+      try {
+        const updatedShop = await approveAdminShop(shopId)
 
-      setShops((previous) => {
-        const next = previous.map((shop) =>
-          shop.id === shopId
-            ? {
-                ...shop,
-                status: approvedStatus,
-                isPublic: true,
-                rejectReason: undefined,
-                updatedAt: nowIso(),
-              }
-            : shop,
-        )
+        setShops((previous) => {
+          const next = previous.map((shop) => (shop.id === shopId ? updatedShop : shop))
 
-        persist(SA_SHOPS_KEY, next)
-        return next
-      })
+          persist(SA_SHOPS_KEY, next)
+          return next
+        })
 
-      pushAuditEvent('SHOP_APPROVED', `Shop approved: ${currentShop.shopName}`)
-      return { ok: true }
+        pushAuditEvent('SHOP_APPROVED', `Shop approved: ${currentShop.shopName}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to approve shop.'
+        return { ok: false, error: message }
+      }
     },
     [persist, pushAuditEvent, shops],
   )
 
   const rejectShop = useCallback(
-    (shopId: string, reason: string): ActionResult => {
+    async (shopId: string, reason: string): Promise<ActionResult> => {
       const currentShop = shops.find((shop) => shop.id === shopId)
 
       if (!currentShop) {
@@ -1184,33 +1471,35 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Rejection reason is required.' }
       }
 
-      const rejectedStatus: ShopStatus = 'rejected'
+      try {
+        const updatedShop = await rejectAdminShop(shopId, normalizedReason)
 
-      setShops((previous) => {
-        const next = previous.map((shop) =>
-          shop.id === shopId
-            ? {
-                ...shop,
-                status: rejectedStatus,
-                isPublic: false,
-                rejectReason: normalizedReason,
-                updatedAt: nowIso(),
-              }
-            : shop,
-        )
+        setShops((previous) => {
+          const next = previous.map((shop) =>
+            shop.id === shopId
+              ? {
+                  ...updatedShop,
+                  rejectReason: normalizedReason,
+                }
+              : shop,
+          )
 
-        persist(SA_SHOPS_KEY, next)
-        return next
-      })
+          persist(SA_SHOPS_KEY, next)
+          return next
+        })
 
-      pushAuditEvent('SHOP_REJECTED', `Shop rejected: ${currentShop.shopName} (${normalizedReason})`)
-      return { ok: true }
+        pushAuditEvent('SHOP_REJECTED', `Shop rejected: ${currentShop.shopName} (${normalizedReason})`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to reject shop.'
+        return { ok: false, error: message }
+      }
     },
     [persist, pushAuditEvent, shops],
   )
 
   const suspendShop = useCallback(
-    (shopId: string, reasonOptional?: string): ActionResult => {
+    async (shopId: string, reasonOptional?: string): Promise<ActionResult> => {
       const currentShop = shops.find((shop) => shop.id === shopId)
 
       if (!currentShop) {
@@ -1222,36 +1511,38 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       }
 
       const normalizedReason = reasonOptional ? normalizeName(reasonOptional) : undefined
-      const suspendedStatus: ShopStatus = 'suspended'
+      try {
+        const updatedShop = await suspendAdminShop(shopId, normalizedReason)
 
-      setShops((previous) => {
-        const next = previous.map((shop) =>
-          shop.id === shopId
-            ? {
-                ...shop,
-                status: suspendedStatus,
-                isPublic: false,
-                rejectReason: normalizedReason,
-                updatedAt: nowIso(),
-              }
-            : shop,
+        setShops((previous) => {
+          const next = previous.map((shop) =>
+            shop.id === shopId
+              ? {
+                  ...updatedShop,
+                  rejectReason: normalizedReason,
+                }
+              : shop,
+          )
+
+          persist(SA_SHOPS_KEY, next)
+          return next
+        })
+
+        pushAuditEvent(
+          'SHOP_SUSPENDED',
+          `Shop suspended: ${currentShop.shopName}${normalizedReason ? ` (${normalizedReason})` : ''}`,
         )
-
-        persist(SA_SHOPS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent(
-        'SHOP_SUSPENDED',
-        `Shop suspended: ${currentShop.shopName}${normalizedReason ? ` (${normalizedReason})` : ''}`,
-      )
-      return { ok: true }
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to suspend shop.'
+        return { ok: false, error: message }
+      }
     },
     [persist, pushAuditEvent, shops],
   )
 
   const reactivateShop = useCallback(
-    (shopId: string): ActionResult => {
+    async (shopId: string): Promise<ActionResult> => {
       const currentShop = shops.find((shop) => shop.id === shopId)
 
       if (!currentShop) {
@@ -1262,32 +1553,28 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Only suspended shops can be reactivated.' }
       }
 
-      const reactivatedStatus: ShopStatus = 'reactivated'
+      try {
+        const updatedShop = await reactivateAdminShop(shopId)
 
-      setShops((previous) => {
-        const next = previous.map((shop) =>
-          shop.id === shopId
-            ? {
-                ...shop,
-                status: reactivatedStatus,
-                isPublic: true,
-                updatedAt: nowIso(),
-              }
-            : shop,
-        )
+        setShops((previous) => {
+          const next = previous.map((shop) => (shop.id === shopId ? updatedShop : shop))
 
-        persist(SA_SHOPS_KEY, next)
-        return next
-      })
+          persist(SA_SHOPS_KEY, next)
+          return next
+        })
 
-      pushAuditEvent('SHOP_REACTIVATED', `Shop reactivated: ${currentShop.shopName}`)
-      return { ok: true }
+        pushAuditEvent('SHOP_REACTIVATED', `Shop reactivated: ${currentShop.shopName}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to reactivate shop.'
+        return { ok: false, error: message }
+      }
     },
     [persist, pushAuditEvent, shops],
   )
 
   const toggleShopPublic = useCallback(
-    (shopId: string): ActionResult => {
+    async (shopId: string): Promise<ActionResult> => {
       const currentShop = shops.find((shop) => shop.id === shopId)
 
       if (!currentShop) {
@@ -1300,29 +1587,31 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
 
       const nextPublic = !currentShop.isPublic
 
-      setShops((previous) => {
-        const next = previous.map((shop) =>
-          shop.id === shopId
-            ? {
-                ...shop,
-                isPublic: nextPublic,
-                updatedAt: nowIso(),
-              }
-            : shop,
+      try {
+        const updatedShop = await toggleAdminShopPublic(shopId, nextPublic)
+
+        setShops((previous) => {
+          const next = previous.map((shop) => (shop.id === shopId ? updatedShop : shop))
+
+          persist(SA_SHOPS_KEY, next)
+          return next
+        })
+
+        pushAuditEvent(
+          'SHOP_PUBLIC_TOGGLED',
+          `Shop public toggled (${nextPublic ? 'public' : 'private'}): ${currentShop.shopName}`,
         )
-
-        persist(SA_SHOPS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('SHOP_PUBLIC_TOGGLED', `Shop public toggled (${nextPublic ? 'public' : 'private'}): ${currentShop.shopName}`)
-      return { ok: true }
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update shop visibility.'
+        return { ok: false, error: message }
+      }
     },
     [persist, pushAuditEvent, shops],
   )
 
   const updateShopSlug = useCallback(
-    (shopId: string, slug: string): ActionResult => {
+    async (shopId: string, slug: string): Promise<ActionResult> => {
       const currentShop = shops.find((shop) => shop.id === shopId)
 
       if (!currentShop) {
@@ -1369,7 +1658,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const forceCancelOrder = useCallback(
-    (orderId: string, reason: string): ActionResult => {
+    async (orderId: string, reason: string): Promise<ActionResult> => {
       const currentOrder = orders.find((order) => order.id === orderId)
 
       if (!currentOrder) {
@@ -1385,40 +1674,24 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Delivered or refunded orders cannot be force cancelled.' }
       }
 
-      const timestamp = nowIso()
-      const cancelledStatus: OrderStatus = 'cancelled'
+      try {
+        await forceCancelAdminOrder(orderId, normalizedReason)
+        const refreshed = await listAdminOrders()
+        setOrders(refreshed)
+        persist(SA_ORDERS_KEY, refreshed)
 
-      setOrders((previous) => {
-        const next = previous.map((order) =>
-          order.id === orderId
-            ? {
-                ...order,
-                status: cancelledStatus,
-                updatedAt: timestamp,
-                statusLogs: [
-                  ...order.statusLogs,
-                  {
-                    status: cancelledStatus,
-                    at: timestamp,
-                    note: normalizedReason,
-                  },
-                ],
-              }
-            : order,
-        )
-
-        persist(SA_ORDERS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('ORDER_FORCE_CANCELLED', `Order force-cancelled: ${orderId} (${normalizedReason})`)
-      return { ok: true }
+        pushAuditEvent('ORDER_FORCE_CANCELLED', `Order force-cancelled: ${orderId} (${normalizedReason})`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to cancel order.'
+        return { ok: false, error: message }
+      }
     },
     [orders, persist, pushAuditEvent],
   )
 
   const triggerRefund = useCallback(
-    (orderId: string): ActionResult => {
+    async (orderId: string): Promise<ActionResult> => {
       const currentOrder = orders.find((order) => order.id === orderId)
 
       if (!currentOrder) {
@@ -1429,35 +1702,18 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Refund is allowed only for cancelled orders with successful payment.' }
       }
 
-      const timestamp = nowIso()
-      const refundedStatus: OrderStatus = 'refunded'
-      const refundedPaymentStatus: PaymentStatus = 'refunded'
+      try {
+        await triggerAdminRefund(orderId)
+        const refreshed = await listAdminOrders()
+        setOrders(refreshed)
+        persist(SA_ORDERS_KEY, refreshed)
 
-      setOrders((previous) => {
-        const next = previous.map((order) =>
-          order.id === orderId
-            ? {
-                ...order,
-                status: refundedStatus,
-                paymentStatus: refundedPaymentStatus,
-                updatedAt: timestamp,
-                statusLogs: [
-                  ...order.statusLogs,
-                  {
-                    status: refundedStatus,
-                    at: timestamp,
-                  },
-                ],
-              }
-            : order,
-        )
-
-        persist(SA_ORDERS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('ORDER_REFUND_TRIGGERED', `Refund triggered for order: ${orderId}`)
-      return { ok: true }
+        pushAuditEvent('ORDER_REFUND_TRIGGERED', `Refund triggered for order: ${orderId}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to trigger refund.'
+        return { ok: false, error: message }
+      }
     },
     [orders, persist, pushAuditEvent],
   )
@@ -1468,7 +1724,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const retryVerifyPayment = useCallback(
-    (paymentId: string): ActionResult => {
+    async (paymentId: string): Promise<ActionResult> => {
       const currentPayment = payments.find((payment) => payment.id === paymentId)
 
       if (!currentPayment) {
@@ -1479,42 +1735,28 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Retry is allowed only for pending or failed payments.' }
       }
 
-      const timestamp = nowIso()
-      const score = deterministicScore(currentPayment.id)
+      try {
+        await retryVerifyAdminPayment(paymentId)
 
-      let nextStatus: GatewayPaymentStatus = currentPayment.status
-      let failureReason: string | undefined = currentPayment.failureReason
+        const refreshed = await listAdminPayments()
+        const cityIdByShop = new Map(shops.map((shop) => [shop.id, shop.cityId]))
+        const normalizedPayments = refreshed.map((payment) => ({
+          ...payment,
+          cityId: payment.cityId || cityIdByShop.get(payment.shopId) || '',
+        }))
 
-      if (currentPayment.status === 'PENDING') {
-        const succeeds = score % 10 < 7
-        nextStatus = succeeds ? 'SUCCESS' : 'FAILED'
-        failureReason = succeeds ? undefined : PAYMENT_VERIFY_FAILURE_REASONS[score % PAYMENT_VERIFY_FAILURE_REASONS.length]
-      } else {
-        const moveToPending = score % 2 === 0
-        nextStatus = moveToPending ? 'PENDING' : 'FAILED'
-        failureReason = moveToPending ? undefined : PAYMENT_VERIFY_FAILURE_REASONS[(score + 1) % PAYMENT_VERIFY_FAILURE_REASONS.length]
+        setPayments(normalizedPayments)
+        persist(SA_PAYMENTS_KEY, normalizedPayments)
+
+        const updatedPayment = normalizedPayments.find((payment) => payment.id === paymentId)
+        pushAuditEvent('PAYMENT_VERIFY_RETRIED', `Payment verify retried: ${paymentId} -> ${updatedPayment?.status || 'PENDING'}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to retry verification.'
+        return { ok: false, error: message }
       }
-
-      setPayments((previous) => {
-        const next = previous.map((payment) =>
-          payment.id === paymentId
-            ? {
-                ...payment,
-                status: nextStatus,
-                failureReason,
-                updatedAt: timestamp,
-              }
-            : payment,
-        )
-
-        persist(SA_PAYMENTS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('PAYMENT_VERIFY_RETRIED', `Payment verify retried: ${paymentId} -> ${nextStatus}`)
-      return { ok: true }
     },
-    [payments, persist, pushAuditEvent],
+    [payments, persist, pushAuditEvent, shops],
   )
 
   const getPaymentById = useCallback(
@@ -1523,7 +1765,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const approvePayout = useCallback(
-    (payoutRequestId: string): ActionResult => {
+    async (payoutRequestId: string): Promise<ActionResult> => {
       const currentRequest = payoutRequests.find((request) => request.id === payoutRequestId)
 
       if (!currentRequest) {
@@ -1534,39 +1776,31 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Only pending payout requests can be approved.' }
       }
 
-      const timestamp = nowIso()
-      const approvedStatus: PayoutRequestStatus = 'APPROVED'
+      try {
+        await approveAdminPayout(payoutRequestId)
+        const refreshed = await listAdminPayouts()
+        setPayoutRequests(refreshed)
+        persist(SA_PAYOUTS_KEY, refreshed)
 
-      setPayoutRequests((previous) => {
-        const next = previous.map((request) =>
-          request.id === payoutRequestId
-            ? {
-                ...request,
-                status: approvedStatus,
-                processedAt: timestamp,
-                rejectReason: undefined,
-              }
-            : request,
-        )
+        const timestamp = nowIso()
+        setPayoutLogs((previous) => {
+          const next = [...previous, buildPayoutLogEntry(payoutRequestId, 'APPROVED', timestamp)]
+          persist(SA_PAYOUT_LOGS_KEY, next)
+          return next
+        })
 
-        persist(SA_PAYOUTS_KEY, next)
-        return next
-      })
-
-      setPayoutLogs((previous) => {
-        const next = [...previous, buildPayoutLogEntry(payoutRequestId, 'APPROVED', timestamp)]
-        persist(SA_PAYOUT_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('PAYOUT_APPROVED', `Payout approved: ${payoutRequestId}`)
-      return { ok: true }
+        pushAuditEvent('PAYOUT_APPROVED', `Payout approved: ${payoutRequestId}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to approve payout request.'
+        return { ok: false, error: message }
+      }
     },
     [payoutRequests, persist, pushAuditEvent],
   )
 
   const rejectPayout = useCallback(
-    (payoutRequestId: string, reason: string): ActionResult => {
+    async (payoutRequestId: string, reason: string): Promise<ActionResult> => {
       const currentRequest = payoutRequests.find((request) => request.id === payoutRequestId)
 
       if (!currentRequest) {
@@ -1582,39 +1816,31 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Reject reason is required.' }
       }
 
-      const timestamp = nowIso()
-      const rejectedStatus: PayoutRequestStatus = 'REJECTED'
+      try {
+        await rejectAdminPayout(payoutRequestId, normalizedReason)
+        const refreshed = await listAdminPayouts()
+        setPayoutRequests(refreshed)
+        persist(SA_PAYOUTS_KEY, refreshed)
 
-      setPayoutRequests((previous) => {
-        const next = previous.map((request) =>
-          request.id === payoutRequestId
-            ? {
-                ...request,
-                status: rejectedStatus,
-                processedAt: timestamp,
-                rejectReason: normalizedReason,
-              }
-            : request,
-        )
+        const timestamp = nowIso()
+        setPayoutLogs((previous) => {
+          const next = [...previous, buildPayoutLogEntry(payoutRequestId, 'REJECTED', timestamp, normalizedReason)]
+          persist(SA_PAYOUT_LOGS_KEY, next)
+          return next
+        })
 
-        persist(SA_PAYOUTS_KEY, next)
-        return next
-      })
-
-      setPayoutLogs((previous) => {
-        const next = [...previous, buildPayoutLogEntry(payoutRequestId, 'REJECTED', timestamp, normalizedReason)]
-        persist(SA_PAYOUT_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('PAYOUT_REJECTED', `Payout rejected: ${payoutRequestId} (${normalizedReason})`)
-      return { ok: true }
+        pushAuditEvent('PAYOUT_REJECTED', `Payout rejected: ${payoutRequestId} (${normalizedReason})`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to reject payout request.'
+        return { ok: false, error: message }
+      }
     },
     [payoutRequests, persist, pushAuditEvent],
   )
 
   const completePayout = useCallback(
-    (payoutRequestId: string): ActionResult => {
+    async (payoutRequestId: string): Promise<ActionResult> => {
       const currentRequest = payoutRequests.find((request) => request.id === payoutRequestId)
 
       if (!currentRequest) {
@@ -1625,32 +1851,25 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Only approved payout requests can be marked completed.' }
       }
 
-      const timestamp = nowIso()
-      const completedStatus: PayoutRequestStatus = 'COMPLETED'
+      try {
+        await completeAdminPayout(payoutRequestId)
+        const refreshed = await listAdminPayouts()
+        setPayoutRequests(refreshed)
+        persist(SA_PAYOUTS_KEY, refreshed)
 
-      setPayoutRequests((previous) => {
-        const next = previous.map((request) =>
-          request.id === payoutRequestId
-            ? {
-                ...request,
-                status: completedStatus,
-                processedAt: timestamp,
-              }
-            : request,
-        )
+        const timestamp = nowIso()
+        setPayoutLogs((previous) => {
+          const next = [...previous, buildPayoutLogEntry(payoutRequestId, 'COMPLETED', timestamp)]
+          persist(SA_PAYOUT_LOGS_KEY, next)
+          return next
+        })
 
-        persist(SA_PAYOUTS_KEY, next)
-        return next
-      })
-
-      setPayoutLogs((previous) => {
-        const next = [...previous, buildPayoutLogEntry(payoutRequestId, 'COMPLETED', timestamp)]
-        persist(SA_PAYOUT_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('PAYOUT_COMPLETED', `Payout completed: ${payoutRequestId}`)
-      return { ok: true }
+        pushAuditEvent('PAYOUT_COMPLETED', `Payout completed: ${payoutRequestId}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to complete payout request.'
+        return { ok: false, error: message }
+      }
     },
     [payoutRequests, persist, pushAuditEvent],
   )
@@ -1664,7 +1883,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const createRefund = useCallback(
-    (input: CreateRefundInput): ActionResult => {
+    async (input: CreateRefundInput): Promise<ActionResult> => {
       const orderId = input.orderId.trim()
       const paymentId = input.paymentId.trim()
       const reason = normalizeName(input.reason)
@@ -1700,41 +1919,28 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Refund amount is invalid. Provide a valid amount.' }
       }
 
-      const timestamp = nowIso()
-      const requestedStatus: RefundStatus = 'REQUESTED'
-      const refund: RefundRecord = {
-        id: `refund_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        orderId,
-        paymentId,
-        cityId,
-        shopId,
-        amount: computedAmount,
-        status: requestedStatus,
-        reason,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+      try {
+        await createAdminRefund({ orderId, reason })
+
+        const { refunds: refreshed, logs } = await listAdminRefunds()
+        setRefunds(refreshed)
+        setRefundLogs(logs)
+        persist(SA_REFUNDS_KEY, refreshed)
+        persist(SA_REFUND_LOGS_KEY, logs)
+
+        const latestRefund = refreshed.find((item) => item.orderId === orderId) || refreshed[0]
+        pushAuditEvent('REFUND_CREATED', `Refund created: ${latestRefund?.id || orderId}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create refund.'
+        return { ok: false, error: message }
       }
-
-      setRefunds((previous) => {
-        const next = [refund, ...previous]
-        persist(SA_REFUNDS_KEY, next)
-        return next
-      })
-
-      setRefundLogs((previous) => {
-        const next = [...previous, buildRefundLogEntry(refund.id, 'CREATED', timestamp, reason)]
-        persist(SA_REFUND_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('REFUND_CREATED', `Refund created: ${refund.id}`)
-      return { ok: true }
     },
     [orders, payments, persist, pushAuditEvent],
   )
 
   const setRefundProcessing = useCallback(
-    (refundId: string): ActionResult => {
+    async (refundId: string): Promise<ActionResult> => {
       const currentRefund = refunds.find((item) => item.id === refundId)
 
       if (!currentRefund) {
@@ -1745,37 +1951,27 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Only requested refunds can move to processing.' }
       }
 
-      const timestamp = nowIso()
-      const processingStatus: RefundStatus = 'PROCESSING'
+      try {
+        await processAdminRefund(refundId)
 
-      setRefunds((previous) => {
-        const next = previous.map((item) =>
-          item.id === refundId
-            ? {
-                ...item,
-                status: processingStatus,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_REFUNDS_KEY, next)
-        return next
-      })
+        const { refunds: refreshed, logs } = await listAdminRefunds()
+        setRefunds(refreshed)
+        setRefundLogs(logs)
+        persist(SA_REFUNDS_KEY, refreshed)
+        persist(SA_REFUND_LOGS_KEY, logs)
 
-      setRefundLogs((previous) => {
-        const next = [...previous, buildRefundLogEntry(refundId, 'PROCESSING', timestamp)]
-        persist(SA_REFUND_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('REFUND_PROCESSING', `Refund moved to processing: ${refundId}`)
-      return { ok: true }
+        pushAuditEvent('REFUND_PROCESSING', `Refund moved to processing: ${refundId}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to move refund to processing.'
+        return { ok: false, error: message }
+      }
     },
     [refunds, persist, pushAuditEvent],
   )
 
   const completeRefund = useCallback(
-    (refundId: string): ActionResult => {
+    async (refundId: string): Promise<ActionResult> => {
       const currentRefund = refunds.find((item) => item.id === refundId)
 
       if (!currentRefund) {
@@ -1786,37 +1982,27 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Only processing refunds can be completed.' }
       }
 
-      const timestamp = nowIso()
-      const completedStatus: RefundStatus = 'COMPLETED'
+      try {
+        await completeAdminRefund(refundId)
 
-      setRefunds((previous) => {
-        const next = previous.map((item) =>
-          item.id === refundId
-            ? {
-                ...item,
-                status: completedStatus,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_REFUNDS_KEY, next)
-        return next
-      })
+        const { refunds: refreshed, logs } = await listAdminRefunds()
+        setRefunds(refreshed)
+        setRefundLogs(logs)
+        persist(SA_REFUNDS_KEY, refreshed)
+        persist(SA_REFUND_LOGS_KEY, logs)
 
-      setRefundLogs((previous) => {
-        const next = [...previous, buildRefundLogEntry(refundId, 'COMPLETED', timestamp)]
-        persist(SA_REFUND_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('REFUND_COMPLETED', `Refund completed: ${refundId}`)
-      return { ok: true }
+        pushAuditEvent('REFUND_COMPLETED', `Refund completed: ${refundId}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to complete refund.'
+        return { ok: false, error: message }
+      }
     },
     [refunds, persist, pushAuditEvent],
   )
 
   const failRefund = useCallback(
-    (refundId: string, note: string): ActionResult => {
+    async (refundId: string, note: string): Promise<ActionResult> => {
       const currentRefund = refunds.find((item) => item.id === refundId)
 
       if (!currentRefund) {
@@ -1832,31 +2018,21 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Failure note is required.' }
       }
 
-      const timestamp = nowIso()
-      const failedStatus: RefundStatus = 'FAILED'
+      try {
+        await failAdminRefund(refundId, normalizedNote)
 
-      setRefunds((previous) => {
-        const next = previous.map((item) =>
-          item.id === refundId
-            ? {
-                ...item,
-                status: failedStatus,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_REFUNDS_KEY, next)
-        return next
-      })
+        const { refunds: refreshed, logs } = await listAdminRefunds()
+        setRefunds(refreshed)
+        setRefundLogs(logs)
+        persist(SA_REFUNDS_KEY, refreshed)
+        persist(SA_REFUND_LOGS_KEY, logs)
 
-      setRefundLogs((previous) => {
-        const next = [...previous, buildRefundLogEntry(refundId, 'FAILED', timestamp, normalizedNote)]
-        persist(SA_REFUND_LOGS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('REFUND_FAILED', `Refund failed: ${refundId} (${normalizedNote})`)
-      return { ok: true }
+        pushAuditEvent('REFUND_FAILED', `Refund failed: ${refundId} (${normalizedNote})`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to mark refund failed.'
+        return { ok: false, error: message }
+      }
     },
     [refunds, persist, pushAuditEvent],
   )
@@ -1875,7 +2051,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const createCoupon = useCallback(
-    (input: CreateCouponInput): ActionResult => {
+    async (input: CreateCouponInput): Promise<ActionResult> => {
       const validation = validateCouponInput(
         input,
         {
@@ -1890,28 +2066,31 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: validation.error ?? 'Coupon validation failed.' }
       }
 
-      const timestamp = nowIso()
-      const coupon: Coupon = {
-        id: `coupon_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        ...validation.normalized,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+      if (validation.normalized.discountType === 'FREE_DELIVERY') {
+        return { ok: false, error: 'Backend coupons currently support only FLAT and PERCENT discount types.' }
       }
 
-      setCoupons((previous) => {
-        const next = [coupon, ...previous]
-        persist(SA_COUPONS_KEY, next)
-        return next
-      })
+      const normalizedCoupon = validation.normalized
 
-      pushAuditEvent('COUPON_CREATED', `Coupon created: ${coupon.code}`)
-      return { ok: true }
+      try {
+        await createAdminCoupon(normalizedCoupon)
+        const refreshed = await listAdminCoupons()
+        setCoupons(refreshed)
+        persist(SA_COUPONS_KEY, refreshed)
+
+        const createdCoupon = refreshed.find((item) => item.code.toLowerCase() === normalizedCoupon.code.toLowerCase())
+        pushAuditEvent('COUPON_CREATED', `Coupon created: ${createdCoupon?.code || normalizedCoupon.code}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create coupon.'
+        return { ok: false, error: message }
+      }
     },
     [categories, cities, coupons, persist, pushAuditEvent, shops],
   )
 
   const updateCoupon = useCallback(
-    (couponId: string, patch: UpdateCouponPatch): ActionResult => {
+    async (couponId: string, patch: UpdateCouponPatch): Promise<ActionResult> => {
       const currentCoupon = coupons.find((item) => item.id === couponId)
 
       if (!currentCoupon) {
@@ -1955,30 +2134,28 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: validation.error ?? 'Coupon validation failed.' }
       }
 
-      const timestamp = nowIso()
+      if (validation.normalized.discountType === 'FREE_DELIVERY') {
+        return { ok: false, error: 'Backend coupons currently support only FLAT and PERCENT discount types.' }
+      }
 
-      setCoupons((previous) => {
-        const next = previous.map((item) =>
-          item.id === couponId
-            ? {
-                ...item,
-                ...validation.normalized,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_COUPONS_KEY, next)
-        return next
-      })
+      try {
+        await updateAdminCoupon(couponId, validation.normalized)
+        const refreshed = await listAdminCoupons()
+        setCoupons(refreshed)
+        persist(SA_COUPONS_KEY, refreshed)
 
-      pushAuditEvent('COUPON_UPDATED', `Coupon updated: ${validation.normalized.code}`)
-      return { ok: true }
+        pushAuditEvent('COUPON_UPDATED', `Coupon updated: ${validation.normalized.code}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update coupon.'
+        return { ok: false, error: message }
+      }
     },
     [categories, cities, coupons, persist, pushAuditEvent, shops],
   )
 
   const toggleCouponActive = useCallback(
-    (couponId: string): ActionResult => {
+    async (couponId: string): Promise<ActionResult> => {
       const currentCoupon = coupons.find((item) => item.id === couponId)
 
       if (!currentCoupon) {
@@ -1986,30 +2163,25 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       }
 
       const nextActive = !currentCoupon.isActive
-      const timestamp = nowIso()
 
-      setCoupons((previous) => {
-        const next = previous.map((item) =>
-          item.id === couponId
-            ? {
-                ...item,
-                isActive: nextActive,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_COUPONS_KEY, next)
-        return next
-      })
+      try {
+        await toggleAdminCouponActive(couponId, nextActive)
+        const refreshed = await listAdminCoupons()
+        setCoupons(refreshed)
+        persist(SA_COUPONS_KEY, refreshed)
 
-      pushAuditEvent('COUPON_TOGGLED_ACTIVE', `Coupon ${nextActive ? 'activated' : 'deactivated'}: ${currentCoupon.code}`)
-      return { ok: true }
+        pushAuditEvent('COUPON_TOGGLED_ACTIVE', `Coupon ${nextActive ? 'activated' : 'deactivated'}: ${currentCoupon.code}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update coupon status.'
+        return { ok: false, error: message }
+      }
     },
     [coupons, persist, pushAuditEvent],
   )
 
   const updatePlan = useCallback(
-    (planId: string, patch: UpdatePlanPatch): ActionResult => {
+    async (planId: string, patch: UpdatePlanPatch): Promise<ActionResult> => {
       const currentPlan = plans.find((item) => item.id === planId)
 
       if (!currentPlan) {
@@ -2054,34 +2226,24 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'At least one feature is required.' }
       }
 
-      const timestamp = nowIso()
+      try {
+        await updateAdminSubscriptionPlan(currentPlan, patch)
+        const refreshed = await listAdminSubscriptionPlans()
+        setPlans(refreshed)
+        persist(SA_PLANS_KEY, refreshed)
 
-      setPlans((previous) => {
-        const next = previous.map((item) =>
-          item.id === planId
-            ? {
-                ...item,
-                price: nextPrice,
-                durationDays: nextDurationDays,
-                productLimit: nextProductLimit,
-                priorityRank: nextPriorityRank,
-                features: nextFeatures,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_PLANS_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('PLAN_UPDATED', `Plan updated: ${currentPlan.name}`)
-      return { ok: true }
+        pushAuditEvent('PLAN_UPDATED', `Plan updated: ${currentPlan.name}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update plan.'
+        return { ok: false, error: message }
+      }
     },
     [persist, plans, pushAuditEvent],
   )
 
   const togglePlanActive = useCallback(
-    (planId: string): ActionResult => {
+    async (planId: string): Promise<ActionResult> => {
       const currentPlan = plans.find((item) => item.id === planId)
 
       if (!currentPlan) {
@@ -2089,24 +2251,19 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       }
 
       const nextActive = !currentPlan.isActive
-      const timestamp = nowIso()
 
-      setPlans((previous) => {
-        const next = previous.map((item) =>
-          item.id === planId
-            ? {
-                ...item,
-                isActive: nextActive,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-        persist(SA_PLANS_KEY, next)
-        return next
-      })
+      try {
+        await toggleAdminSubscriptionPlanActive(planId, nextActive)
+        const refreshed = await listAdminSubscriptionPlans()
+        setPlans(refreshed)
+        persist(SA_PLANS_KEY, refreshed)
 
-      pushAuditEvent('PLAN_TOGGLED_ACTIVE', `Plan ${nextActive ? 'activated' : 'deactivated'}: ${currentPlan.name}`)
-      return { ok: true }
+        pushAuditEvent('PLAN_TOGGLED_ACTIVE', `Plan ${nextActive ? 'activated' : 'deactivated'}: ${currentPlan.name}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update plan status.'
+        return { ok: false, error: message }
+      }
     },
     [persist, plans, pushAuditEvent],
   )
@@ -2155,7 +2312,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const updateConfigValue = useCallback(
-    (key: string, value: string): ActionResult => {
+    async (key: string, value: string): Promise<ActionResult> => {
       const currentConfig = config.find((item) => item.key === key)
 
       if (!currentConfig) {
@@ -2167,31 +2324,24 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Config value cannot be empty.' }
       }
 
-      const timestamp = nowIso()
+      try {
+        await updateAdminConfigValue(key, normalizedValue)
+        const refreshed = await listAdminConfig()
+        setConfig(refreshed)
+        persist(SA_CONFIG_KEY, refreshed)
 
-      setConfig((previous) => {
-        const next = previous.map((item) =>
-          item.key === key
-            ? {
-                ...item,
-                value: normalizedValue,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
-
-        persist(SA_CONFIG_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('CONFIG_UPDATED', `Config updated: ${key}`)
-      return { ok: true }
+        pushAuditEvent('CONFIG_UPDATED', `Config updated: ${key}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update config.'
+        return { ok: false, error: message }
+      }
     },
     [config, persist, pushAuditEvent],
   )
 
   const toggleFeatureFlag = useCallback(
-    (key: string): ActionResult => {
+    async (key: string): Promise<ActionResult> => {
       const currentConfig = config.find((item) => item.key === key)
 
       if (!currentConfig) {
@@ -2202,30 +2352,25 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: `${key} is not a supported feature flag.` }
       }
 
-      if (currentConfig.value !== 'true' && currentConfig.value !== 'false') {
+      const currentRaw = String(currentConfig.value).toLowerCase()
+      if (currentRaw !== 'true' && currentRaw !== 'false') {
         return { ok: false, error: `${key} value must be either "true" or "false".` }
       }
 
-      const nextValue = currentConfig.value === 'true' ? 'false' : 'true'
-      const timestamp = nowIso()
+      const nextValue = currentRaw === 'true' ? false : true
 
-      setConfig((previous) => {
-        const next = previous.map((item) =>
-          item.key === key
-            ? {
-                ...item,
-                value: nextValue,
-                updatedAt: timestamp,
-              }
-            : item,
-        )
+      try {
+        await updateAdminConfigValue(key, nextValue)
+        const refreshed = await listAdminConfig()
+        setConfig(refreshed)
+        persist(SA_CONFIG_KEY, refreshed)
 
-        persist(SA_CONFIG_KEY, next)
-        return next
-      })
-
-      pushAuditEvent('FEATURE_FLAG_TOGGLED', `Feature flag toggled: ${key} -> ${nextValue}`)
-      return { ok: true }
+        pushAuditEvent('FEATURE_FLAG_TOGGLED', `Feature flag toggled: ${key} -> ${String(nextValue)}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to toggle feature flag.'
+        return { ok: false, error: message }
+      }
     },
     [config, persist, pushAuditEvent],
   )
@@ -2236,36 +2381,44 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const getConfigBoolean = useCallback(
-    (key: string) => getConfigValue(key) === 'true',
+    (key: string) => String(getConfigValue(key) ?? '').toLowerCase() === 'true',
     [getConfigValue],
   )
 
   const setDefaultCommission = useCallback(
-    (percentage: number): ActionResult => {
+    async (percentage: number): Promise<ActionResult> => {
       const normalizedPercentage = Number(percentage)
       if (!isValidPercentage(normalizedPercentage)) {
         return { ok: false, error: 'Commission percentage must be between 0 and 100.' }
       }
 
-      const timestamp = nowIso()
-      setCommission((previous) => {
-        const next = normalizeCommission({
-          ...previous,
-          defaultPercentage: normalizedPercentage,
-          updatedAt: timestamp,
-        })
-        persist(SA_COMMISSION_KEY, next)
-        return next
-      })
+      try {
+        await updateAdminDefaultCommission(normalizedPercentage)
+        const defaultPercentage = await getAdminDefaultCommission()
 
-      pushAuditEvent('COMMISSION_DEFAULT_UPDATED', `Default commission updated to ${normalizedPercentage}%`)
-      return { ok: true }
+        const timestamp = nowIso()
+        setCommission((previous) => {
+          const next = normalizeCommission({
+            ...previous,
+            defaultPercentage,
+            updatedAt: timestamp,
+          })
+          persist(SA_COMMISSION_KEY, next)
+          return next
+        })
+
+        pushAuditEvent('COMMISSION_DEFAULT_UPDATED', `Default commission updated to ${defaultPercentage}%`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to update default commission.'
+        return { ok: false, error: message }
+      }
     },
     [persist, pushAuditEvent],
   )
 
   const upsertCityOverride = useCallback(
-    (cityId: string, percentage: number): ActionResult => {
+    async (cityId: string, percentage: number): Promise<ActionResult> => {
       const normalizedCityId = cityId.trim()
       if (!normalizedCityId) {
         return { ok: false, error: 'City is required.' }
@@ -2306,7 +2459,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const removeCityOverride = useCallback(
-    (cityId: string): ActionResult => {
+    async (cityId: string): Promise<ActionResult> => {
       const normalizedCityId = cityId.trim()
       if (!normalizedCityId) {
         return { ok: false, error: 'City is required.' }
@@ -2336,7 +2489,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const upsertCategoryOverride = useCallback(
-    (categoryId: string, percentage: number): ActionResult => {
+    async (categoryId: string, percentage: number): Promise<ActionResult> => {
       const normalizedCategoryId = categoryId.trim()
       if (!normalizedCategoryId) {
         return { ok: false, error: 'Category is required.' }
@@ -2383,7 +2536,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const removeCategoryOverride = useCallback(
-    (categoryId: string): ActionResult => {
+    async (categoryId: string): Promise<ActionResult> => {
       const normalizedCategoryId = categoryId.trim()
       if (!normalizedCategoryId) {
         return { ok: false, error: 'Category is required.' }
@@ -2413,7 +2566,7 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
   )
 
   const upsertShopOverride = useCallback(
-    (shopId: string, percentage: number): ActionResult => {
+    async (shopId: string, percentage: number): Promise<ActionResult> => {
       const normalizedShopId = shopId.trim()
       if (!normalizedShopId) {
         return { ok: false, error: 'Shop is required.' }
@@ -2424,37 +2577,45 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Commission percentage must be between 0 and 100.' }
       }
 
-      const timestamp = nowIso()
-      setCommission((previous) => {
-        const existingIndex = previous.shopOverrides.findIndex((item) => item.shopId === normalizedShopId)
-        const nextShopOverrides =
-          existingIndex >= 0
-            ? previous.shopOverrides.map((item, index) =>
-                index === existingIndex
-                  ? { shopId: normalizedShopId, percentage: normalizedPercentage, updatedAt: timestamp }
-                  : item,
-              )
-            : [...previous.shopOverrides, { shopId: normalizedShopId, percentage: normalizedPercentage, updatedAt: timestamp }]
+      try {
+        const existing = commission.shopOverrides.find((item) => item.shopId === normalizedShopId)
+        if (existing?.overrideId) {
+          await removeAdminShopCommissionOverride(existing.overrideId)
+        }
 
-        const next = normalizeCommission({
-          ...previous,
-          shopOverrides: nextShopOverrides,
-          updatedAt: timestamp,
+        await createAdminShopCommissionOverride(normalizedShopId, normalizedPercentage)
+        const refreshedOverrides = await listAdminShopCommissionOverrides()
+
+        const timestamp = nowIso()
+        setCommission((previous) => {
+          const next = normalizeCommission({
+            ...previous,
+            shopOverrides: refreshedOverrides.map((item) => ({
+              shopId: item.shopId,
+              percentage: item.percentage,
+              updatedAt: item.updatedAt,
+              overrideId: item.overrideId,
+            })),
+            updatedAt: timestamp,
+          })
+
+          persist(SA_COMMISSION_KEY, next)
+          return next
         })
 
-        persist(SA_COMMISSION_KEY, next)
-        return next
-      })
-
-      const shopName = shops.find((item) => item.id === normalizedShopId)?.shopName ?? normalizedShopId
-      pushAuditEvent('COMMISSION_OVERRIDE_UPSERTED', `Shop commission override saved: ${shopName} -> ${normalizedPercentage}%`)
-      return { ok: true }
+        const shopName = shops.find((item) => item.id === normalizedShopId)?.shopName ?? normalizedShopId
+        pushAuditEvent('COMMISSION_OVERRIDE_UPSERTED', `Shop commission override saved: ${shopName} -> ${normalizedPercentage}%`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to save shop override.'
+        return { ok: false, error: message }
+      }
     },
-    [persist, pushAuditEvent, shops],
+    [commission.shopOverrides, persist, pushAuditEvent, shops],
   )
 
   const removeShopOverride = useCallback(
-    (shopId: string): ActionResult => {
+    async (shopId: string): Promise<ActionResult> => {
       const normalizedShopId = shopId.trim()
       if (!normalizedShopId) {
         return { ok: false, error: 'Shop is required.' }
@@ -2465,20 +2626,36 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
         return { ok: false, error: 'Shop override not found.' }
       }
 
-      const timestamp = nowIso()
-      setCommission((previous) => {
-        const next = normalizeCommission({
-          ...previous,
-          shopOverrides: previous.shopOverrides.filter((item) => item.shopId !== normalizedShopId),
-          updatedAt: timestamp,
-        })
-        persist(SA_COMMISSION_KEY, next)
-        return next
-      })
+      try {
+        if (existing.overrideId) {
+          await removeAdminShopCommissionOverride(existing.overrideId)
+        }
 
-      const shopName = shops.find((item) => item.id === normalizedShopId)?.shopName ?? normalizedShopId
-      pushAuditEvent('COMMISSION_OVERRIDE_REMOVED', `Shop commission override removed: ${shopName}`)
-      return { ok: true }
+        const refreshedOverrides = await listAdminShopCommissionOverrides()
+
+        const timestamp = nowIso()
+        setCommission((previous) => {
+          const next = normalizeCommission({
+            ...previous,
+            shopOverrides: refreshedOverrides.map((item) => ({
+              shopId: item.shopId,
+              percentage: item.percentage,
+              updatedAt: item.updatedAt,
+              overrideId: item.overrideId,
+            })),
+            updatedAt: timestamp,
+          })
+          persist(SA_COMMISSION_KEY, next)
+          return next
+        })
+
+        const shopName = shops.find((item) => item.id === normalizedShopId)?.shopName ?? normalizedShopId
+        pushAuditEvent('COMMISSION_OVERRIDE_REMOVED', `Shop commission override removed: ${shopName}`)
+        return { ok: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to remove shop override.'
+        return { ok: false, error: message }
+      }
     },
     [commission.shopOverrides, persist, pushAuditEvent, shops],
   )
@@ -2642,10 +2819,23 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       auditEvents,
       initialized,
       lastError,
-      initializeFromStorageOrSeed,
-      resetAllDemoData,
+      initializeFromStorage,
+      resetAllData,
       appendAuditEvent,
       clearAuditEvents,
+      syncCities,
+      syncCategories,
+      syncShops,
+      syncOrders,
+      syncPayments,
+      syncPayouts,
+      syncRefunds,
+      syncCoupons,
+      syncPlans,
+      syncShopSubscriptions,
+      syncConfig,
+      syncCommission,
+      syncAuditEvents,
       addCity,
       updateCity,
       toggleCityActive,
@@ -2719,10 +2909,23 @@ export const SuperAdminStoreProvider = ({ children }: SuperAdminStoreProviderPro
       plans,
       shopSubscriptions,
       shops,
-      initializeFromStorageOrSeed,
-      resetAllDemoData,
+      initializeFromStorage,
+      resetAllData,
       appendAuditEvent,
       clearAuditEvents,
+      syncCities,
+      syncCategories,
+      syncShops,
+      syncOrders,
+      syncPayments,
+      syncPayouts,
+      syncRefunds,
+      syncCoupons,
+      syncPlans,
+      syncShopSubscriptions,
+      syncConfig,
+      syncCommission,
+      syncAuditEvents,
       addCity,
       updateCity,
       toggleCityActive,

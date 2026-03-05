@@ -76,7 +76,7 @@ const paymentStatusColorMap: Record<PaymentStatus, 'warning' | 'success' | 'erro
 const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
 const OrdersPage = () => {
-  const { orders, shops, cities, forceCancelOrder, triggerRefund, getOrderById, getCityName, getShopName } = useSuperAdminStore()
+  const { orders, shops, cities, syncOrders, forceCancelOrder, triggerRefund, getOrderById, getCityName, getShopName } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [cityFilter, setCityFilter] = useState('all')
@@ -92,6 +92,23 @@ const OrdersPage = () => {
   const [cancelReason, setCancelReason] = useState('')
   const [refundConfirmOpen, setRefundConfirmOpen] = useState(false)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncOrders()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load orders from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncOrders])
 
   const selectedOrder = useMemo(
     () => (selectedOrderId ? getOrderById(selectedOrderId) ?? null : null),
@@ -531,13 +548,13 @@ const OrdersPage = () => {
             color="error"
             variant="contained"
             disabled={cancelReason.trim().length < 5 || !selectedOrder}
-            onClick={() => {
+            onClick={async () => {
               if (!selectedOrder) {
                 showError('Order not found')
                 return
               }
 
-              const result = forceCancelOrder(selectedOrder.id, cancelReason)
+              const result = await forceCancelOrder(selectedOrder.id, cancelReason)
               if (result.ok) {
                 showSuccess(`Order ${selectedOrder.id} cancelled`)
                 setForceCancelOpen(false)
@@ -558,14 +575,14 @@ const OrdersPage = () => {
         confirmLabel="Trigger Refund"
         cancelLabel="Cancel"
         onClose={() => setRefundConfirmOpen(false)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!selectedOrder) {
             showError('Order not found')
             setRefundConfirmOpen(false)
             return
           }
 
-          const result = triggerRefund(selectedOrder.id)
+          const result = await triggerRefund(selectedOrder.id)
           if (result.ok) {
             showSuccess(`Refund triggered for ${selectedOrder.id}`)
           } else {

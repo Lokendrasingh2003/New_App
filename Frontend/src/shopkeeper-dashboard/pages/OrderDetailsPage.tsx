@@ -193,7 +193,7 @@ const OrderDetailsPage = () => {
           <Card>
             <CardContent>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                We could not locate this order. It may have been removed from demo data.
+                We could not locate this order. It may have been removed.
               </Typography>
               <Button variant="outlined" onClick={() => navigate('/shop/orders')}>
                 Back to Orders

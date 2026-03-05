@@ -6,11 +6,11 @@ import { superAdminTheme } from './theme/superAdminTheme'
 import { AppSnackbarProvider } from './ui/AppSnackbarProvider'
 
 const SuperAdminBootstrap = () => {
-  const { initialized, initializeFromStorageOrSeed } = useSuperAdminStore()
+  const { initialized, initializeFromStorage } = useSuperAdminStore()
 
   useEffect(() => {
-    initializeFromStorageOrSeed()
-  }, [initializeFromStorageOrSeed])
+    initializeFromStorage()
+  }, [initializeFromStorage])
 
   if (!initialized) {
     return (

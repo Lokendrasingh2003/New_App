@@ -41,7 +41,7 @@ const formatDateTime = (value: string) => new Date(value).toLocaleString()
 const canRetryStatus = (status: PaymentStatus) => status === 'PENDING' || status === 'FAILED'
 
 const PaymentsPage = () => {
-  const { payments, cities, retryVerifyPayment, getPaymentById, getCityName, getShopName } = useSuperAdminStore()
+  const { payments, cities, syncPayments, retryVerifyPayment, getPaymentById, getCityName, getShopName } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [statusFilter, setStatusFilter] = useState<'ALL' | PaymentStatus>('ALL')
@@ -51,6 +51,23 @@ const PaymentsPage = () => {
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null)
   const [retryTargetId, setRetryTargetId] = useState<string | null>(null)
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncPayments()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load payments from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncPayments])
 
   const selectedPayment = useMemo(
     () => (selectedPaymentId ? getPaymentById(selectedPaymentId) ?? null : null),
@@ -176,8 +193,8 @@ const PaymentsPage = () => {
     [],
   )
 
-  const handleRetryVerify = (paymentId: string) => {
-    const result = retryVerifyPayment(paymentId)
+  const handleRetryVerify = async (paymentId: string) => {
+    const result = await retryVerifyPayment(paymentId)
     if (!result.ok) {
       showError(result.error ?? 'Could not retry verification.')
       return
@@ -342,16 +359,16 @@ const PaymentsPage = () => {
       <ConfirmDialog
         open={Boolean(retryTargetId)}
         title="Retry verification?"
-        description="This will retry payment verification using demo gateway rules."
+        description="This will retry payment verification via admin API."
         confirmLabel="Retry"
         cancelLabel="Cancel"
         onClose={() => setRetryTargetId(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!retryTargetId) {
             return
           }
 
-          handleRetryVerify(retryTargetId)
+          await handleRetryVerify(retryTargetId)
         }}
       />
     </>

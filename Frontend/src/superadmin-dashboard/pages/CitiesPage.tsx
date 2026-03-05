@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import CityFormDialog from '../modules/cities/CityFormDialog'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
@@ -32,7 +32,7 @@ import { useInitialLoadingDelay } from '../hooks/useInitialLoadingDelay'
 type ConfirmState = {
   title: string
   description: string
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
 }
 
 const formatDateTime = (value: string) => {
@@ -44,7 +44,7 @@ const StatusChip = ({ label, active }: { label: string; active: boolean }) => {
 }
 
 const CitiesPage = () => {
-  const { cities, addCity, updateCity, toggleCityActive, toggleCityDelivery } = useSuperAdminStore()
+  const { cities, commission, syncCities, addCity, updateCity, toggleCityActive, toggleCityDelivery } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [search, setSearch] = useState('')
@@ -56,10 +56,37 @@ const CitiesPage = () => {
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
   const isInitialLoading = useInitialLoadingDelay()
 
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncCities()
+
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load cities from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncCities])
+
+  const citiesWithCommission = useMemo(() => {
+    const overrideMap = new Map(commission.cityOverrides.map((item) => [item.cityId, item.percentage]))
+
+    return cities.map((city) => ({
+      ...city,
+      commissionOverridePercentage: overrideMap.get(city.id) ?? city.commissionOverridePercentage ?? null,
+    }))
+  }, [cities, commission.cityOverrides])
+
   const filteredCities = useMemo(() => {
     const searchValue = search.trim().toLowerCase()
 
-    return cities.filter((city) => {
+    return citiesWithCommission.filter((city) => {
       const matchesSearch =
         searchValue.length === 0 ||
         city.name.toLowerCase().includes(searchValue) ||
@@ -73,7 +100,7 @@ const CitiesPage = () => {
 
       return matchesSearch && matchesStatus && matchesDelivery
     })
-  }, [cities, deliveryFilter, search, statusFilter])
+  }, [citiesWithCommission, deliveryFilter, search, statusFilter])
 
   const clearFilters = () => {
     setSearch('')
@@ -103,8 +130,8 @@ const CitiesPage = () => {
     downloadCsv(filename, csv)
   }
 
-  const handleAddCity = (input: CityUpsertInput) => {
-    const result = addCity(input)
+  const handleAddCity = async (input: CityUpsertInput) => {
+    const result = await addCity(input)
 
     if (result.ok) {
       showSuccess('City created')
@@ -113,12 +140,12 @@ const CitiesPage = () => {
     return result
   }
 
-  const handleEditCity = (input: CityUpsertInput) => {
+  const handleEditCity = async (input: CityUpsertInput) => {
     if (!selectedCity) {
       return { ok: false, error: 'No city selected.' }
     }
 
-    const result = updateCity(selectedCity.id, input)
+    const result = await updateCity(selectedCity.id, input)
 
     if (result.ok) {
       showSuccess('City updated')
@@ -147,8 +174,8 @@ const CitiesPage = () => {
       description: isDeactivate
         ? 'Inactive city means no new orders in that city.'
         : 'Active city means new orders can be accepted in this city.',
-      onConfirm: () => {
-        const result = toggleCityActive(city.id)
+      onConfirm: async () => {
+        const result = await toggleCityActive(city.id)
         if (result.ok) {
           showSuccess(`City ${city.isActive ? 'deactivated' : 'activated'}`)
         } else {
@@ -167,8 +194,8 @@ const CitiesPage = () => {
       description: isDisable
         ? 'Delivery will be unavailable in this city.'
         : 'Delivery will be available in this city.',
-      onConfirm: () => {
-        const result = toggleCityDelivery(city.id)
+      onConfirm: async () => {
+        const result = await toggleCityDelivery(city.id)
         if (result.ok) {
           showSuccess(`Delivery ${city.deliveryEnabled ? 'disabled' : 'enabled'}`)
         } else {
@@ -237,11 +264,12 @@ const CitiesPage = () => {
       {
         field: 'actions',
         headerName: 'Actions',
-        minWidth: 280,
+        minWidth: 520,
+        flex: 1.6,
         sortable: false,
         filterable: false,
         renderCell: (params: GridRenderCellParams<City>) => (
-          <Stack direction="row" spacing={1} sx={{ py: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ py: 1, pr: 1, minWidth: 500 }}>
             <Tooltip title="Edit">
               <Button size="small" variant="outlined" startIcon={<EditRoundedIcon />} onClick={() => openEditDialog(params.row)}>
                 Edit
@@ -269,7 +297,7 @@ const CitiesPage = () => {
         ),
       },
     ],
-    [],
+    [handleToggleActive, handleToggleDelivery],
   )
 
   return (
@@ -370,7 +398,7 @@ const CitiesPage = () => {
         open={formOpen}
         mode={dialogMode}
         city={selectedCity}
-        cities={cities}
+        cities={citiesWithCommission}
         onClose={() => setFormOpen(false)}
         onSubmit={dialogMode === 'add' ? handleAddCity : handleEditCity}
       />

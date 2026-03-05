@@ -18,7 +18,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
@@ -59,7 +59,7 @@ const SubscriptionTabs = () => {
 }
 
 const SubscriptionPlansPage = () => {
-  const { plans, updatePlan, togglePlanActive } = useSuperAdminStore()
+  const { plans, syncPlans, updatePlan, togglePlanActive } = useSuperAdminStore()
   const { showError, showSuccess } = useAppSnackbar()
 
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null)
@@ -72,6 +72,23 @@ const SubscriptionPlansPage = () => {
     priorityRank: '',
     featuresText: '',
   })
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncPlans()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load subscription plans from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncPlans])
 
   const formError = useMemo(() => {
     const price = Number(formState.price)
@@ -119,7 +136,7 @@ const SubscriptionPlansPage = () => {
     })
   }
 
-  const handleSavePlan = () => {
+  const handleSavePlan = async () => {
     if (!editingPlan) {
       return
     }
@@ -135,7 +152,7 @@ const SubscriptionPlansPage = () => {
         .filter((item) => item.length > 0),
     }
 
-    const result = updatePlan(editingPlan.id, payload)
+    const result = await updatePlan(editingPlan.id, payload)
     if (!result.ok) {
       showError(result.error ?? 'Could not update plan.')
       return
@@ -145,12 +162,12 @@ const SubscriptionPlansPage = () => {
     setEditingPlan(null)
   }
 
-  const handleConfirmToggle = () => {
+  const handleConfirmToggle = async () => {
     if (!toggleTarget) {
       return
     }
 
-    const result = togglePlanActive(toggleTarget.id)
+    const result = await togglePlanActive(toggleTarget.id)
     if (!result.ok) {
       showError(result.error ?? 'Could not update plan status.')
       return
@@ -348,7 +365,7 @@ const SubscriptionPlansPage = () => {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEditingPlan(null)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSavePlan} disabled={Boolean(formError)}>
+          <Button variant="contained" onClick={async () => await handleSavePlan()} disabled={Boolean(formError)}>
             Save
           </Button>
         </DialogActions>
@@ -361,7 +378,7 @@ const SubscriptionPlansPage = () => {
         confirmLabel={toggleTarget?.isActive ? 'Deactivate' : 'Activate'}
         cancelLabel="Cancel"
         onClose={() => setToggleTarget(null)}
-        onConfirm={handleConfirmToggle}
+        onConfirm={async () => await handleConfirmToggle()}
       />
     </Box>
   )

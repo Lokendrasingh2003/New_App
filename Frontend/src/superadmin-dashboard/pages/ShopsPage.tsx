@@ -18,7 +18,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { Shop, ShopStatus } from '../types/shop'
@@ -74,6 +74,7 @@ const ShopsPage = () => {
     shops,
     cities,
     categories,
+    syncShops,
     approveShop,
     rejectShop,
     suspendShop,
@@ -100,6 +101,23 @@ const ShopsPage = () => {
   const [slugTarget, setSlugTarget] = useState<Shop | null>(null)
   const [slugInput, setSlugInput] = useState('')
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncShops()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load shops from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncShops])
 
   const selectedShop = useMemo(
     () => (selectedShopId ? shops.find((shop) => shop.id === selectedShopId) ?? null : null),
@@ -196,13 +214,15 @@ const ShopsPage = () => {
     downloadCsv(filename, csv)
   }
 
-  const runAction = (result: { ok: boolean; error?: string }, successMessage: string) => {
-    if (result.ok) {
+  const runAction = async (result: Promise<{ ok: boolean; error?: string }>, successMessage: string) => {
+    const resolved = await result
+
+    if (resolved.ok) {
       showSuccess(successMessage)
       return
     }
 
-    showError(result.error ?? 'Action failed.')
+    showError(resolved.error ?? 'Action failed.')
   }
 
   const openRejectDialog = (shop: Shop) => {
@@ -333,7 +353,9 @@ const ShopsPage = () => {
                 variant="outlined"
                 color="success"
                 disabled={!canReactivate}
-                onClick={() => runAction(reactivateShop(row.id), `${row.shopName} reactivated`)}
+                onClick={() => {
+                  void runAction(reactivateShop(row.id), `${row.shopName} reactivated`)
+                }}
               >
                 Reactivate
               </Button>
@@ -341,7 +363,9 @@ const ShopsPage = () => {
                 size="small"
                 variant="outlined"
                 disabled={!canTogglePublic}
-                onClick={() => runAction(toggleShopPublic(row.id), `${row.shopName} visibility updated`)}
+                onClick={() => {
+                  void runAction(toggleShopPublic(row.id), `${row.shopName} visibility updated`)
+                }}
               >
                 Toggle Public
               </Button>
@@ -504,7 +528,9 @@ const ShopsPage = () => {
                     </Button>
                     <Button
                       variant="outlined"
-                      onClick={() => runAction(toggleShopPublic(selectedShop.id), `${selectedShop.shopName} visibility updated`)}
+                      onClick={() => {
+                        void runAction(toggleShopPublic(selectedShop.id), `${selectedShop.shopName} visibility updated`)
+                      }}
                     >
                       Toggle Public
                     </Button>
@@ -515,7 +541,9 @@ const ShopsPage = () => {
                   <Button
                     variant="outlined"
                     color="success"
-                    onClick={() => runAction(reactivateShop(selectedShop.id), `${selectedShop.shopName} reactivated`)}
+                    onClick={() => {
+                      void runAction(reactivateShop(selectedShop.id), `${selectedShop.shopName} reactivated`)
+                    }}
                   >
                     Reactivate
                   </Button>
@@ -549,12 +577,12 @@ const ShopsPage = () => {
         confirmLabel="Approve"
         cancelLabel="Cancel"
         onClose={() => setApproveTarget(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!approveTarget) {
             return
           }
 
-          runAction(approveShop(approveTarget.id), `${approveTarget.shopName} approved`)
+          await runAction(approveShop(approveTarget.id), `${approveTarget.shopName} approved`)
           setApproveTarget(null)
         }}
       />
@@ -583,12 +611,12 @@ const ShopsPage = () => {
             color="error"
             variant="contained"
             disabled={rejectReason.trim().length < 5}
-            onClick={() => {
+            onClick={async () => {
               if (!rejectTarget) {
                 return
               }
 
-              runAction(rejectShop(rejectTarget.id, rejectReason), `${rejectTarget.shopName} rejected`)
+              await runAction(rejectShop(rejectTarget.id, rejectReason), `${rejectTarget.shopName} rejected`)
               setRejectTarget(null)
             }}
           >
@@ -619,12 +647,12 @@ const ShopsPage = () => {
           <Button
             color="warning"
             variant="contained"
-            onClick={() => {
+            onClick={async () => {
               if (!suspendTarget) {
                 return
               }
 
-              runAction(suspendShop(suspendTarget.id, suspendReason), `${suspendTarget.shopName} suspended`)
+              await runAction(suspendShop(suspendTarget.id, suspendReason), `${suspendTarget.shopName} suspended`)
               setSuspendTarget(null)
             }}
           >
@@ -652,12 +680,12 @@ const ShopsPage = () => {
           <Button
             variant="contained"
             disabled={Boolean(slugValidationError)}
-            onClick={() => {
+            onClick={async () => {
               if (!slugTarget) {
                 return
               }
 
-              runAction(updateShopSlug(slugTarget.id, slugInput), `${slugTarget.shopName} slug updated`)
+              await runAction(updateShopSlug(slugTarget.id, slugInput), `${slugTarget.shopName} slug updated`)
               setSlugTarget(null)
             }}
           >

@@ -42,10 +42,10 @@ const ensureDistinctSubcategories = (subcategories) => {
 const normalizeSubcategories = (subcategories) => {
   const list = Array.isArray(subcategories) ? subcategories : [];
 
-  if (list.length < 5 || list.length > 8) {
+  if (list.length > 8) {
     throw new ApiError(
       HTTP_STATUS.BAD_REQUEST,
-      'Category must have 5-8 subcategories.',
+      'Category can have at most 8 subcategories.',
       ERROR_CODES.VALIDATION_ERROR
     );
   }
@@ -275,10 +275,10 @@ const publishCategory = async (req, res) => {
 
   const activeSubcategories = (category.subcategories || []).filter((subcategory) => subcategory.isActive !== false);
 
-  if (activeSubcategories.length < 5 || activeSubcategories.length > 8) {
+  if (activeSubcategories.length > 8) {
     throw new ApiError(
       HTTP_STATUS.BAD_REQUEST,
-      'Publishing requires 5-8 active subcategories.',
+      'Publishing allows at most 8 active subcategories.',
       ERROR_CODES.VALIDATION_ERROR
     );
   }
@@ -321,14 +321,6 @@ const addSubcategory = async (req, res) => {
 
   if (!category) {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Category not found.', ERROR_CODES.CATEGORY_NOT_FOUND);
-  }
-
-  if (category.status === 'PUBLISHED') {
-    throw new ApiError(
-      HTTP_STATUS.BAD_REQUEST,
-      'Cannot add subcategories to published category.',
-      ERROR_CODES.VALIDATION_ERROR
-    );
   }
 
   if ((category.subcategories || []).length >= 8) {

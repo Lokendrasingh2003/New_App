@@ -16,13 +16,6 @@ export class HttpShopService implements ShopService {
     })
   }
 
-  async resetDemo(): Promise<void> {
-    // TODO: connect backend endpoint
-    await httpClient<void>('/api/shopkeeper/shop/reset-demo', {
-      method: 'POST',
-    })
-  }
-
   async addCustomSubcategory(name: string): Promise<ShopDTO> {
     // TODO: connect backend endpoint
     return httpClient<ShopDTO>('/api/shopkeeper/shop/custom-subcategories', {

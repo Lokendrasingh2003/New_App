@@ -119,6 +119,9 @@ const LoginPage = () => {
             <Typography variant="body2" color="text.secondary" textAlign="center">
               Sign in to manage orders, products and offers
             </Typography>
+            <Typography variant="caption" color="text.secondary" textAlign="center">
+              Demo: Mobile 9999999999 | Password shop1234
+            </Typography>
 
             <Divider />
 

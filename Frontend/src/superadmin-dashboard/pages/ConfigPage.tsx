@@ -1,6 +1,6 @@
 import { Box, Button, Card, CardContent, Chip, Skeleton, Stack, Switch, TextField, Typography } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { SystemConfig } from '../types/SystemConfig'
@@ -73,7 +73,7 @@ const getValidationError = (key: string, rawValue: string) => {
 }
 
 const ConfigPage = () => {
-  const { config, updateConfigValue, toggleFeatureFlag, getConfigBoolean } = useSuperAdminStore()
+  const { config, syncConfig, updateConfigValue, toggleFeatureFlag, getConfigBoolean } = useSuperAdminStore()
   const { showSuccess, showError } = useAppSnackbar()
 
   const [editTarget, setEditTarget] = useState<SystemConfig | null>(null)
@@ -81,6 +81,23 @@ const ConfigPage = () => {
   const [maintenanceConfirmOpen, setMaintenanceConfirmOpen] = useState(false)
   const [search, setSearch] = useState('')
   const isInitialLoading = useInitialLoadingDelay()
+
+  useEffect(() => {
+    let mounted = true
+
+    const run = async () => {
+      const result = await syncConfig()
+      if (!result.ok && mounted) {
+        showError(result.error ?? 'Could not load config from backend.')
+      }
+    }
+
+    run()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError, syncConfig])
 
   const maintenanceEnabled = getConfigBoolean('maintenance_mode')
   const launchOfferEnabled = getConfigBoolean('launch_offer_enabled')
@@ -166,8 +183,8 @@ const ConfigPage = () => {
     [],
   )
 
-  const handleToggle = (key: string) => {
-    const result = toggleFeatureFlag(key)
+  const handleToggle = async (key: string) => {
+    const result = await toggleFeatureFlag(key)
     if (!result.ok) {
       showError(result.error ?? 'Could not toggle feature flag.')
       return
@@ -235,13 +252,13 @@ const ConfigPage = () => {
                   <Chip label={maintenanceEnabled ? 'ON' : 'OFF'} color={maintenanceEnabled ? 'warning' : 'default'} />
                   <Switch
                     checked={maintenanceEnabled}
-                    onChange={(_, checked) => {
+                    onChange={async (_, checked) => {
                       if (checked) {
                         setMaintenanceConfirmOpen(true)
                         return
                       }
 
-                      handleToggle('maintenance_mode')
+                      await handleToggle('maintenance_mode')
                     }}
                   />
                 </Stack>
@@ -263,7 +280,7 @@ const ConfigPage = () => {
                 </Box>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Chip label={launchOfferEnabled ? 'ON' : 'OFF'} color={launchOfferEnabled ? 'success' : 'default'} />
-                  <Switch checked={launchOfferEnabled} onChange={() => handleToggle('launch_offer_enabled')} />
+                  <Switch checked={launchOfferEnabled} onChange={async () => await handleToggle('launch_offer_enabled')} />
                 </Stack>
               </Stack>
             </Stack>
@@ -332,12 +349,12 @@ const ConfigPage = () => {
           <Button
             variant="contained"
             disabled={Boolean(validationError) || !editTarget}
-            onClick={() => {
+            onClick={async () => {
               if (!editTarget) {
                 return
               }
 
-              const result = updateConfigValue(editTarget.key, editValue)
+              const result = await updateConfigValue(editTarget.key, editValue)
               if (!result.ok) {
                 showError(result.error ?? 'Could not update config.')
                 return
@@ -359,8 +376,8 @@ const ConfigPage = () => {
         confirmLabel="Turn On"
         cancelLabel="Cancel"
         onClose={() => setMaintenanceConfirmOpen(false)}
-        onConfirm={() => {
-          handleToggle('maintenance_mode')
+        onConfirm={async () => {
+          await handleToggle('maintenance_mode')
           setMaintenanceConfirmOpen(false)
         }}
       />
