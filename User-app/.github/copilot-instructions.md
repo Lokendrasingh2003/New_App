@@ -1,0 +1,3 @@
+- Expo React Native TypeScript app for a hyperlocal marketplace customer app.
+- Use NativeWind classes for screen and component styling.
+- Keep architecture modular: contexts, navigation, components, screens.
