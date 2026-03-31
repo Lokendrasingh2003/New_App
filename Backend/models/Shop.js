@@ -78,9 +78,31 @@ const qrCodeSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const registrationDetailsSchema = new mongoose.Schema(
+  {
+    businessProofUrl: { type: String, default: null, trim: true },
+    identityProofUrl: { type: String, default: null, trim: true },
+    bankAccountHolderName: { type: String, default: null, trim: true },
+    bankAccountNumberEncrypted: { type: String, default: null },
+    bankIfscCode: { type: String, default: null, trim: true, uppercase: true },
+    submittedAt: { type: Date, default: null },
+    reviewedAt: { type: Date, default: null },
+    reviewStatus: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED'],
+      default: 'PENDING',
+    },
+    rejectionReason: { type: String, default: null, trim: true },
+  },
+  { _id: false }
+);
+
 const shopSchema = new mongoose.Schema(
   {
     ownerId: { type: String, required: true, trim: true },
+    ownerType: { type: String, enum: ['SHOPKEEPER', 'USER'], default: 'SHOPKEEPER' },
+    contactName: { type: String, default: null, trim: true },
+    registrationSource: { type: String, enum: ['SHOPKEEPER', 'USER_APP'], default: 'SHOPKEEPER' },
     cityId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'City',
@@ -93,6 +115,12 @@ const shopSchema = new mongoose.Schema(
     imageUrl: { type: String, default: null },
     description: { type: String, default: null, trim: true },
     category: { type: String, required: true, trim: true, index: true },
+    categoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
+      default: null,
+      index: true,
+    },
     phone: { type: String, required: true, match: /^[0-9]{10}$/ },
     email: { type: String, default: null, trim: true, lowercase: true },
     addressLine1: { type: String, required: true, trim: true },
@@ -118,6 +146,7 @@ const shopSchema = new mongoose.Schema(
     stats: { type: statsSchema, default: () => ({}) },
     cachedStats: { type: cachedStatsSchema, default: () => ({}) },
     qrCode: { type: qrCodeSchema, default: () => ({}) },
+    registrationDetails: { type: registrationDetailsSchema, default: () => ({}) },
     status: {
       type: String,
       enum: Object.values(SHOP_STATUS),

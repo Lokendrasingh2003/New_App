@@ -84,8 +84,11 @@ const OfferForm = ({
   const validate = (): boolean => {
     const nextErrors: OfferFormErrors = {}
 
-    if (!values.name.trim()) {
+    const normalizedName = values.name.trim()
+    if (!normalizedName) {
       nextErrors.name = 'Offer name is required'
+    } else if (normalizedName.length < 5) {
+      nextErrors.name = 'Offer name must be at least 5 characters'
     }
 
     if (values.value <= 0) {

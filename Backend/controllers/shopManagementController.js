@@ -1,4 +1,7 @@
+const fs = require('fs');
+const path = require('path');
 const City = require('../models/City');
+const Category = require('../models/Category');
 const Shop = require('../models/Shop');
 const Product = require('../models/Product');
 const ProductReview = require('../models/ProductReview');
@@ -350,6 +353,15 @@ const getShopSettings = async (req, res) => {
   const { shopkeeper, shop } = await ensureOwnerShop({ shopkeeperId: req.shopkeeper.id, shopId });
 
   const city = await City.findById(shop.cityId).lean();
+  const categoryDoc = shop.categoryId
+    ? await Category.findById(shop.categoryId).lean()
+    : await Category.findOne({ name: { $regex: `^${String(shop.category || '').trim()}$`, $options: 'i' } }).lean();
+
+  const resolvedCategoryId = categoryDoc?._id || shop.categoryId || null;
+  if (!shop.categoryId && resolvedCategoryId) {
+    shop.categoryId = resolvedCategoryId;
+    await shop.save();
+  }
 
   return sendSuccess(res, {
     statusCode: HTTP_STATUS.OK,
@@ -358,6 +370,9 @@ const getShopSettings = async (req, res) => {
       shop: {
         id: shop._id,
         shopName: shop.shopName,
+        imageUrl: shop.imageUrl || null,
+        categoryId: resolvedCategoryId,
+        categoryName: categoryDoc?.name || shop.category || null,
         ownerName: shopkeeper.personalInfo?.name || null,
         phone: shop.phone,
         city: city?.name || null,
@@ -447,6 +462,49 @@ const updateShopSettings = async (req, res) => {
     message: 'Shop settings updated successfully.',
     data: {
       shop,
+    },
+  });
+};
+
+const uploadShopImage = async (req, res) => {
+  const { shopId } = req.params;
+  const { shop } = await ensureOwnerShop({ shopkeeperId: req.shopkeeper.id, shopId });
+  ensureApprovedShop(shop);
+
+  if (!req.file) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Image file is required.', ERROR_CODES.VALIDATION_ERROR);
+  }
+
+  const ext = path.extname(req.file.originalname || '').toLowerCase();
+  if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Only jpg, png and webp formats are allowed.', ERROR_CODES.VALIDATION_ERROR);
+  }
+
+  if (Number(req.file.size || 0) > 8 * 1024 * 1024) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Image size must be <= 8MB.', ERROR_CODES.VALIDATION_ERROR);
+  }
+
+  const uploadsRoot = path.join(__dirname, '..', 'uploads', 'shops');
+  await fs.promises.mkdir(uploadsRoot, { recursive: true });
+
+  const imageId = `shop-${String(shop._id)}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const filename = `${imageId}${ext === '.jpeg' ? '.jpg' : ext}`;
+  const targetPath = path.join(uploadsRoot, filename);
+  await fs.promises.writeFile(targetPath, req.file.buffer);
+
+  const reqBase = `${req.protocol}://${req.get('host')}`;
+  const base = reqBase || `${process.env.API_BASE_URL || 'http://localhost:5000/api'}`.replace(/\/api$/i, '');
+  const imageUrl = `${base}/uploads/shops/${filename}`;
+
+  shop.imageUrl = imageUrl;
+  await shop.save();
+
+  return sendSuccess(res, {
+    statusCode: HTTP_STATUS.OK,
+    message: 'Shop image uploaded successfully.',
+    data: {
+      imageUrl,
+      shopId: String(shop._id),
     },
   });
 };
@@ -649,6 +707,7 @@ module.exports = {
   getShopDashboard,
   getShopSettings,
   updateShopSettings,
+  uploadShopImage,
   patchBusinessHours,
   patchDeliveryConfig,
   getShopStats,

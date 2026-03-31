@@ -23,6 +23,8 @@ const {
   couponPublicSchemas,
   adminAuditSchemas,
   adminConfigSchemas,
+  adminUserSchemas,
+  adminBannerSchemas,
 } = require('../utils/validators');
 
 const validate = (schema, source = 'body') => {
@@ -51,6 +53,8 @@ const validatePhone = () => validate(authSchemas.sendOtp);
 
 const validateOtp = () => validate(authSchemas.verifyOtp);
 
+const validatePasswordLogin = () => validate(authSchemas.passwordLogin);
+
 const validateRefreshToken = () => validate(authSchemas.refreshToken);
 
 const validateProfileUpdate = () => validate(userSchemas.updateProfile);
@@ -60,6 +64,10 @@ const validateCreateAddress = () => validate(userSchemas.createAddress);
 const validateUpdateAddress = () => validate(userSchemas.updateAddress);
 
 const validateAddressIdParam = () => validate(userSchemas.addressIdParam, 'params');
+
+const validateUserShopRegistrationSubmit = () => validate(userSchemas.shopRegistrationSubmit);
+
+const validateRegistrationIdParam = () => validate(userSchemas.registrationIdParam, 'params');
 
 const validateCartAddItem = () => validate(cartSchemas.addItem);
 
@@ -301,15 +309,32 @@ const validateAdminConfigUpdate = () => validate(adminConfigSchemas.update);
 
 const validateAdminConfigReset = () => validate(adminConfigSchemas.reset);
 
+const validateAdminUsersListQuery = () => validate(adminUserSchemas.listQuery, 'query');
+
+const validateAdminUserIdParam = () => validate(adminUserSchemas.userIdParam, 'params');
+
+const validateAdminBannerCreate = () => validate(adminBannerSchemas.createOrUpdate);
+
+const validateAdminBannerUpdate = () => validate(adminBannerSchemas.createOrUpdate);
+
+const validateAdminBannersListQuery = () => validate(adminBannerSchemas.listQuery, 'query');
+
+const validateAdminBannerIdParam = () => validate(adminBannerSchemas.bannerIdParam, 'params');
+
+const validateAdminBannerToggleActive = () => validate(adminBannerSchemas.toggleActive);
+
 module.exports = {
   validate,
   validatePhone,
   validateOtp,
+  validatePasswordLogin,
   validateRefreshToken,
   validateProfileUpdate,
   validateCreateAddress,
   validateUpdateAddress,
   validateAddressIdParam,
+  validateUserShopRegistrationSubmit,
+  validateRegistrationIdParam,
   validateCartAddItem,
   validateCartUpdateItem,
   validateCartItemParam,
@@ -430,4 +455,11 @@ module.exports = {
   validateAdminConfigKeyParam,
   validateAdminConfigUpdate,
   validateAdminConfigReset,
+  validateAdminUsersListQuery,
+  validateAdminUserIdParam,
+  validateAdminBannerCreate,
+  validateAdminBannerUpdate,
+  validateAdminBannersListQuery,
+  validateAdminBannerIdParam,
+  validateAdminBannerToggleActive,
 };

@@ -51,8 +51,12 @@ const computeCouponDiscount = (coupon, subtotal, baseDiscount) => {
     raw = 0;
   }
 
-  if (coupon.maxDiscount !== null && coupon.maxDiscount !== undefined) {
-    raw = Math.min(raw, Number(coupon.maxDiscount || 0));
+  const parsedMaxDiscount =
+    coupon.maxDiscount !== null && coupon.maxDiscount !== undefined ? Number(coupon.maxDiscount) : null;
+
+  // Legacy coupons may have maxDiscount = 0. Treat non-positive values as no cap.
+  if (parsedMaxDiscount !== null && Number.isFinite(parsedMaxDiscount) && parsedMaxDiscount > 0) {
+    raw = Math.min(raw, parsedMaxDiscount);
   }
 
   const couponCap = subtotal * (CART_COUPON_MAX_DISCOUNT_PERCENT / 100);

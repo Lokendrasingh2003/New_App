@@ -5,23 +5,28 @@ import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import ProductForm from '../components/ProductForm'
 import type { ProductFormValues } from '../components/ProductForm'
+import type { Subcategory } from '../types/category'
 import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
 import { getShopkeeperShopId } from '../shared/auth/authStore'
-import { createProduct, getCategoryIdByName, getProducts, uploadProductImage } from '../services/productService'
+import { createProduct, getCategoryMetaByName, getProducts, uploadProductImage } from '../services/productService'
+import { getShopSettings } from '../services/shopService'
 
 const ProductCreatePage = () => {
   const navigate = useNavigate()
-  const { getShopCategory, getAvailableSubcategories } = useShopkeeperStore()
+  const { getShopCategory, getAvailableSubcategories, updateShopSettings } = useShopkeeperStore()
   const { showMessage } = useAppFeedback()
   const shopId = getShopkeeperShopId()
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false)
   const [categoryId, setCategoryId] = useState('')
+  const [resolvedCategoryName, setResolvedCategoryName] = useState('Uncategorized')
+  const [fallbackSubcategories, setFallbackSubcategories] = useState<Subcategory[]>([])
   const [pageError, setPageError] = useState('')
 
   const shopCategory = getShopCategory()
   const availableSubcategories = getAvailableSubcategories()
-  const defaultSubcategory = availableSubcategories[0]
+  const effectiveSubcategories = availableSubcategories.length > 0 ? availableSubcategories : fallbackSubcategories
+  const defaultSubcategory = effectiveSubcategories[0]
 
   useEffect(() => {
     const resolveCategoryId = async () => {
@@ -33,6 +38,43 @@ const ProductCreatePage = () => {
       try {
         setPageError('')
 
+        const settings = await getShopSettings(shopId)
+        const normalizedCategoryName = String(settings.categoryName || '').trim() || 'Uncategorized'
+        const normalizedCategoryId = String(settings.categoryId || '').trim()
+
+        setResolvedCategoryName(normalizedCategoryName)
+        updateShopSettings(
+          {
+            categoryId: normalizedCategoryId || shopCategory.id,
+            categoryName: normalizedCategoryName,
+          },
+          { syncRemote: false },
+        )
+
+        const resolvedCategory = await getCategoryMetaByName(normalizedCategoryName)
+        if (resolvedCategory?.subcategories.length) {
+          setFallbackSubcategories(
+            resolvedCategory.subcategories.map((name, index) => ({
+              id: `api-sub-${index + 1}`,
+              name,
+              source: 'ADMIN',
+            })),
+          )
+        } else {
+          setFallbackSubcategories([])
+        }
+
+        if (/^[a-fA-F0-9]{24}$/.test(normalizedCategoryId)) {
+          setCategoryId(normalizedCategoryId)
+          return
+        }
+
+        const directCategoryId = String(shopCategory.id || '').trim()
+        if (/^[a-fA-F0-9]{24}$/.test(directCategoryId)) {
+          setCategoryId(directCategoryId)
+          return
+        }
+
         const listResponse = await getProducts(shopId, { limit: 1, offset: 0 })
         const firstProductCategoryId = listResponse.products[0]?.categoryId
         if (firstProductCategoryId) {
@@ -40,25 +82,24 @@ const ProductCreatePage = () => {
           return
         }
 
-        const resolved = await getCategoryIdByName(shopCategory.name)
-        if (!resolved) {
+        if (!resolvedCategory?.id) {
           throw new Error('Unable to resolve category for this shop.')
         }
 
-        setCategoryId(resolved)
+        setCategoryId(resolvedCategory.id)
       } catch (error) {
         setPageError(error instanceof Error ? error.message : 'Unable to prepare product form.')
       }
     }
 
     void resolveCategoryId()
-  }, [shopCategory.name, shopId])
+  }, [shopCategory.id, shopId])
 
   const initialValues: ProductFormValues = {
     name: '',
     description: '',
-    categoryId: shopCategory.id,
-    category: shopCategory.name,
+    categoryId: categoryId || shopCategory.id,
+    category: resolvedCategoryName,
     subcategoryId: defaultSubcategory?.id,
     subcategory: defaultSubcategory?.name ?? '',
     images: [],
@@ -114,7 +155,7 @@ const ProductCreatePage = () => {
       name: values.name,
       description: values.description,
       categoryId,
-      categoryName: shopCategory.name,
+      categoryName: resolvedCategoryName,
       subcategoryName: values.subcategory,
       images: values.images,
       active: values.active,
@@ -131,9 +172,10 @@ const ProductCreatePage = () => {
         <PageHeader title="Add Product" subtitle="Create a new product with variants" />
         {pageError ? <Alert severity="error">{pageError}</Alert> : null}
         <ProductForm
+          key={`${categoryId}-${resolvedCategoryName}-${effectiveSubcategories.length}`}
           initialValues={initialValues}
-          shopCategoryName={shopCategory.name}
-          subcategoryOptions={availableSubcategories}
+          shopCategoryName={resolvedCategoryName}
+          subcategoryOptions={effectiveSubcategories}
           submitLabel="Save Product"
           onSubmit={handleSubmit}
           onCancel={() => setConfirmDiscardOpen(true)}

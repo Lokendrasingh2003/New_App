@@ -64,13 +64,15 @@ const validateCouponBusinessRules = (input) => {
 
 const buildCouponPayload = (req) => {
   const code = normalizeCode(req.body.code || generateCouponCode());
+  const rawMaxDiscount = req.body.maxDiscount !== undefined ? Number(req.body.maxDiscount) : null;
+  const normalizedMaxDiscount = Number.isFinite(rawMaxDiscount) && rawMaxDiscount > 0 ? rawMaxDiscount : null;
 
   return {
     code,
     description: req.body.description ? String(req.body.description).trim() : null,
     discountType: String(req.body.discountType).toUpperCase(),
     discountValue: Number(req.body.discountValue),
-    maxDiscount: req.body.maxDiscount !== undefined ? Number(req.body.maxDiscount) : null,
+    maxDiscount: normalizedMaxDiscount,
     minOrderValue: Number(req.body.minOrderValue || 0),
     maxUsageLimit: Number(req.body.maxUsageLimit),
     maxUsagePerUser: Number(req.body.maxUsagePerUser),

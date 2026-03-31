@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const { verifyUserToken } = require('../middleware/auth');
 const { requireUser } = require('../middleware/authGuards');
 const {
@@ -18,8 +19,16 @@ const {
   setDefaultAddress,
 } = require('../controllers/usersController');
 const { getMyReviews } = require('../controllers/reviewsController');
+const {
+  submitShopRegistration,
+  listMyShopRegistrations,
+  getMyShopRegistrationById,
+  uploadShopRegistrationDocument,
+} = require('../controllers/userShopRegistrationController');
+const { validateUserShopRegistrationSubmit, validateRegistrationIdParam } = require('../middleware/validation');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * @swagger
@@ -75,6 +84,10 @@ router.delete('/profile', deleteProfile);
 
 router.get('/addresses', getAddresses);
 router.get('/my-reviews', getMyReviews);
+router.get('/shop-registration', listMyShopRegistrations);
+router.get('/shop-registration/:registrationId', validateRegistrationIdParam(), getMyShopRegistrationById);
+router.post('/shop-registration/upload', upload.single('file'), uploadShopRegistrationDocument);
+router.post('/shop-registration', validateUserShopRegistrationSubmit(), submitShopRegistration);
 router.post('/addresses', validateCreateAddress(), addAddress);
 router.put('/addresses/:addressId', validateAddressIdParam(), validateUpdateAddress(), updateAddress);
 router.delete('/addresses/:addressId', validateAddressIdParam(), deleteAddress);

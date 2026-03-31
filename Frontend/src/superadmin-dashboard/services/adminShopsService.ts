@@ -46,6 +46,26 @@ type ShopDetailApi = {
   createdAt?: string
   updatedAt?: string
   phone?: string
+  description?: string | null
+  addressLine1?: string
+  area?: string
+  pincode?: string
+  businessHours?: {
+    open?: string
+    close?: string
+  }
+  imageUrl?: string | null
+}
+
+type RegistrationApi = {
+  businessProofUrl?: string | null
+  identityProofUrl?: string | null
+  gstNumber?: string | null
+  bankAccountHolderName?: string | null
+  bankIfscCode?: string | null
+  bankAccountNumberMasked?: string | null
+  reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null
+  rejectionReason?: string | null
 }
 
 type ShopDetailPayload = {
@@ -55,6 +75,7 @@ type ShopDetailPayload = {
     _id?: string
     name?: string
   } | null
+  registration?: RegistrationApi | null
   stats?: Record<string, unknown>
 }
 
@@ -116,7 +137,12 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback
 }
 
-const toShop = (detail: ShopDetailApi, owner?: OwnerApi | null, summary?: ShopListItemApi): Shop => ({
+const toShop = (
+  detail: ShopDetailApi,
+  owner?: OwnerApi | null,
+  summary?: ShopListItemApi,
+  registration?: RegistrationApi | null,
+): Shop => ({
   id: String(detail._id || summary?.id || summary?._id || ''),
   shopName: String(detail.shopName || summary?.shopName || ''),
   ownerName: String(owner?.name || summary?.owner?.name || 'Unknown owner'),
@@ -126,7 +152,21 @@ const toShop = (detail: ShopDetailApi, owner?: OwnerApi | null, summary?: ShopLi
   slug: String(detail.slug || ''),
   status: toFrontendStatus(detail.status || summary?.status),
   isPublic: Boolean(detail.publicVisible),
-  rejectReason: undefined,
+  rejectReason: registration?.rejectionReason || undefined,
+  description: detail.description || undefined,
+  addressLine1: detail.addressLine1 || undefined,
+  area: detail.area || undefined,
+  pincode: detail.pincode || undefined,
+  openingTime: detail.businessHours?.open || undefined,
+  closingTime: detail.businessHours?.close || undefined,
+  imageUrl: detail.imageUrl || undefined,
+  gstNumber: registration?.gstNumber || undefined,
+  businessProofUrl: registration?.businessProofUrl || undefined,
+  identityProofUrl: registration?.identityProofUrl || undefined,
+  bankAccountHolderName: registration?.bankAccountHolderName || undefined,
+  bankIfscCode: registration?.bankIfscCode || undefined,
+  bankAccountNumberMasked: registration?.bankAccountNumberMasked || undefined,
+  registrationReviewStatus: registration?.reviewStatus || null,
   createdAt: String(detail.createdAt || summary?.createdAt || new Date().toISOString()),
   updatedAt: String(detail.updatedAt || detail.createdAt || summary?.createdAt || new Date().toISOString()),
 })
@@ -141,7 +181,7 @@ export const getAdminShopById = async (shopId: string): Promise<Shop> => {
     throw new Error(data?.message || 'Shop not found.')
   }
 
-  return toShop(payload.shop, payload.owner)
+  return toShop(payload.shop, payload.owner, undefined, payload.registration)
 }
 
 export const listAdminShops = async (): Promise<Shop[]> => {
@@ -182,7 +222,7 @@ export const listAdminShops = async (): Promise<Shop[]> => {
             )
           }
 
-          return toShop(payload.shop, payload.owner, summary)
+          return toShop(payload.shop, payload.owner, summary, payload.registration)
         } catch {
           return toShop(
             {

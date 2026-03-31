@@ -50,6 +50,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    password: {
+      type: String,
+      default: null,
+      select: false,
+    },
     isVerified: {
       type: Boolean,
       default: false,
@@ -94,6 +99,24 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
       match: /^[0-9]{10}$/,
+    },
+    role: {
+      type: String,
+      enum: ['USER', 'SHOPKEEPER'],
+      default: 'USER',
+      index: true,
+    },
+    shopkeeperId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shopkeeper',
+      default: null,
+      index: true,
+    },
+    shopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shop',
+      default: null,
+      index: true,
     },
   },
   {

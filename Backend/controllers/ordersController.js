@@ -393,7 +393,10 @@ const cancelOrder = async (req, res) => {
     order.payment.refundId = refund.refundId;
     order.payment.refundedAt = new Date();
   } else if (order.payment.mode === ORDER_PAYMENT_MODES.ONLINE) {
+    order.payment.status = ORDER_PAYMENT_STATUS.FAILED;
     order.payment.failureReason = reason || 'Cancelled before payment confirmation.';
+  } else if (order.payment.mode === ORDER_PAYMENT_MODES.COD) {
+    order.payment.status = ORDER_PAYMENT_STATUS.FAILED;
   }
 
   await order.save();

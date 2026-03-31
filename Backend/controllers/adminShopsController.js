@@ -1,9 +1,11 @@
 const Shop = require('../models/Shop');
 const Shopkeeper = require('../models/Shopkeeper');
+const User = require('../models/User');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const City = require('../models/City');
 const ApiError = require('../utils/apiError');
+const { decryptField } = require('../utils/secureField');
 const { sendSuccess } = require('../utils/response');
 const { logAudit, buildActorFromRequest, buildMetadataFromRequest } = require('../utils/auditLogger');
 const { HTTP_STATUS, ERROR_CODES, SHOP_STATUS, ORDER_STATUS, AUDIT_EVENT_TYPES } = require('../config/constants');
@@ -16,6 +18,87 @@ const parseIntSafe = (value, fallback) => {
 const sendShopkeeperStatusSms = async ({ phone, status, shopName, reason }) => {
   const safePhone = String(phone || '').trim();
   console.log(`[SMS Placeholder] Shop ${status}: ${shopName || 'N/A'} to +91${safePhone}${reason ? ` | ${reason}` : ''}`);
+};
+
+const ensureUserPromotedToShopkeeper = async ({ user, shop, city }) => {
+  const fullUser = await User.findById(user._id).select('+password');
+
+  if (!fullUser) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found.', ERROR_CODES.USER_NOT_FOUND);
+  }
+
+  if (!fullUser.password) {
+    throw new ApiError(
+      HTTP_STATUS.BAD_REQUEST,
+      'User password is missing. User must set password before shop approval.',
+      ERROR_CODES.VALIDATION_ERROR
+    );
+  }
+
+  let shopkeeper = await Shopkeeper.findOne({ phone: fullUser.phone });
+
+  if (!shopkeeper) {
+    shopkeeper = await Shopkeeper.create({
+      phone: fullUser.phone,
+      password: fullUser.password,
+      email: null,
+      personalInfo: {
+        name: fullUser.name || shop.contactName || shop.shopName,
+        address: shop.addressLine1 || null,
+        city: city?.name || shop.area || 'Unknown',
+        pincode: shop.pincode || null,
+      },
+      businessInfo: {
+        businessName: shop.shopName,
+        registrationType: 'PROPRIETOR',
+        registrationNumber: null,
+      },
+      verification: {
+        emailVerified: Boolean(fullUser.email),
+        phoneVerified: fullUser.isVerified === true,
+        gstVerified: Boolean(shop.verification?.gstNumber),
+        businessDetailsVerified: true,
+        bankDetailsVerified: false,
+      },
+      bankDetails: {
+        accountHolderName: shop.registrationDetails?.bankAccountHolderName || null,
+        accountNumber: null,
+        ifscCode: shop.registrationDetails?.bankIfscCode || null,
+        bankName: null,
+      },
+      status: 'ACTIVE',
+      shopId: shop._id,
+    });
+  } else {
+    shopkeeper.password = fullUser.password;
+    shopkeeper.email = shopkeeper.email || null;
+    shopkeeper.personalInfo = {
+      ...(shopkeeper.personalInfo || {}),
+      name: shopkeeper.personalInfo?.name || fullUser.name || shop.contactName || shop.shopName,
+      address: shopkeeper.personalInfo?.address || shop.addressLine1 || null,
+      city: shopkeeper.personalInfo?.city || city?.name || shop.area || 'Unknown',
+      pincode: shopkeeper.personalInfo?.pincode || shop.pincode || null,
+    };
+    shopkeeper.businessInfo = {
+      ...(shopkeeper.businessInfo || {}),
+      businessName: shopkeeper.businessInfo?.businessName || shop.shopName,
+      registrationType: shopkeeper.businessInfo?.registrationType || 'PROPRIETOR',
+      registrationNumber: shopkeeper.businessInfo?.registrationNumber || null,
+    };
+    if (!shopkeeper.shopId) {
+      shopkeeper.shopId = shop._id;
+    }
+    await shopkeeper.save();
+  }
+
+  fullUser.role = 'SHOPKEEPER';
+  fullUser.shopkeeperId = shopkeeper._id;
+  fullUser.shopId = shop._id;
+  await fullUser.save();
+
+  shop.ownerId = String(shopkeeper._id);
+  shop.ownerType = 'SHOPKEEPER';
+  shop.contactName = fullUser.name || shop.contactName || shop.shopName;
 };
 
 const mapOwner = (owner) => {
@@ -33,6 +116,25 @@ const mapOwner = (owner) => {
   };
 };
 
+const mapUserOwner = (owner) => {
+  if (!owner) {
+    return null;
+  }
+
+  return {
+    id: owner._id,
+    phone: owner.phone,
+    email: owner.email,
+    name: owner.name || null,
+    status: 'ACTIVE',
+    verification: {
+      phoneVerified: owner.isVerified === true,
+      gstVerified: false,
+      businessDetailsVerified: false,
+    },
+  };
+};
+
 const loadShopWithOwner = async (shopId) => {
   const shop = await Shop.findById(shopId).lean();
   if (!shop) {
@@ -40,9 +142,36 @@ const loadShopWithOwner = async (shopId) => {
   }
 
   const owner = await Shopkeeper.findById(shop.ownerId).lean();
+  const userOwner = owner ? null : await User.findById(shop.ownerId).lean();
   const city = await City.findById(shop.cityId).lean();
 
-  return { shop, owner, city };
+  return { shop, owner, userOwner, city };
+};
+
+const resolveOwnerForShop = async (shop) => {
+  const shopkeeperOwner = await Shopkeeper.findById(shop.ownerId);
+  if (shopkeeperOwner) {
+    return {
+      kind: 'SHOPKEEPER',
+      shopkeeperOwner,
+      userOwner: null,
+      phone: shopkeeperOwner.phone || shop.phone,
+      displayOwner: mapOwner(shopkeeperOwner.toObject()),
+    };
+  }
+
+  const userOwner = await User.findById(shop.ownerId);
+  if (userOwner) {
+    return {
+      kind: 'USER',
+      shopkeeperOwner: null,
+      userOwner,
+      phone: userOwner.phone || shop.phone,
+      displayOwner: mapUserOwner(userOwner.toObject()),
+    };
+  }
+
+  throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Shop owner not found.', ERROR_CODES.USER_NOT_FOUND);
 };
 
 const assertTransition = ({ from, to }) => {
@@ -119,6 +248,23 @@ const buildListFilter = async (query) => {
     filter.$or.push({ ownerId: { $in: ownerMatches } });
   }
 
+  const userMatches = await User.find(
+    {
+      $or: [
+        { phone: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
+      ],
+    },
+    { _id: 1 }
+  )
+    .lean()
+    .then((rows) => rows.map((row) => String(row._id)));
+
+  if (userMatches.length > 0) {
+    filter.$or.push({ ownerId: { $in: userMatches } });
+  }
+
   return filter;
 };
 
@@ -135,7 +281,9 @@ const listShops = async (req, res) => {
 
   const ownerIds = [...new Set(shops.map((shop) => String(shop.ownerId)).filter(Boolean))];
   const owners = await Shopkeeper.find({ _id: { $in: ownerIds } }).lean();
+  const userOwners = await User.find({ _id: { $in: ownerIds } }).lean();
   const ownerMap = new Map(owners.map((owner) => [String(owner._id), owner]));
+  const userOwnerMap = new Map(userOwners.map((owner) => [String(owner._id), owner]));
 
   const payload = shops.map((shop) => ({
     id: shop._id,
@@ -143,7 +291,7 @@ const listShops = async (req, res) => {
     status: shop.status,
     cityId: shop.cityId,
     createdAt: shop.createdAt,
-    owner: mapOwner(ownerMap.get(String(shop.ownerId))),
+    owner: mapOwner(ownerMap.get(String(shop.ownerId))) || mapUserOwner(userOwnerMap.get(String(shop.ownerId))),
   }));
 
   return sendSuccess(res, {
@@ -157,7 +305,7 @@ const listShops = async (req, res) => {
 };
 
 const getShopByIdForAdmin = async (req, res) => {
-  const { shop, owner, city } = await loadShopWithOwner(req.params.shopId);
+  const { shop, owner, userOwner, city } = await loadShopWithOwner(req.params.shopId);
 
   const [totalOrders, productCount] = await Promise.all([
     Order.countDocuments({ shopId: shop._id }),
@@ -171,8 +319,29 @@ const getShopByIdForAdmin = async (req, res) => {
     message: 'Admin shop details fetched successfully.',
     data: {
       shop,
-      owner: mapOwner(owner),
+      owner: mapOwner(owner) || mapUserOwner(userOwner),
       city,
+      registration: {
+        businessProofUrl: shop.registrationDetails?.businessProofUrl || null,
+        identityProofUrl: shop.registrationDetails?.identityProofUrl || null,
+        gstNumber: shop.verification?.gstNumber || null,
+        bankAccountHolderName: shop.registrationDetails?.bankAccountHolderName || null,
+        bankIfscCode: shop.registrationDetails?.bankIfscCode || null,
+        bankAccountNumberMasked: (() => {
+          const value = decryptField(shop.registrationDetails?.bankAccountNumberEncrypted || '');
+          if (!value) {
+            return null;
+          }
+          if (value.length <= 4) {
+            return value;
+          }
+          return `${'*'.repeat(value.length - 4)}${value.slice(-4)}`;
+        })(),
+        submittedAt: shop.registrationDetails?.submittedAt || null,
+        reviewedAt: shop.registrationDetails?.reviewedAt || null,
+        reviewStatus: shop.registrationDetails?.reviewStatus || null,
+        rejectionReason: shop.registrationDetails?.rejectionReason || null,
+      },
       stats: {
         totalOrders,
         earnings: Number(shop.stats?.totalEarnings || 0),
@@ -195,12 +364,20 @@ const approveShop = async (req, res) => {
 
   assertTransition({ from: shop.status, to: SHOP_STATUS.APPROVED });
 
-  const owner = await Shopkeeper.findById(shop.ownerId);
-  if (!owner) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Shop owner not found.', ERROR_CODES.SHOPKEEPER_NOT_FOUND);
+  const resolvedOwner = await resolveOwnerForShop(shop);
+
+  if (resolvedOwner.kind === 'SHOPKEEPER') {
+    ensureApprovalVerification(resolvedOwner.shopkeeperOwner);
   }
 
-  ensureApprovalVerification(owner);
+  if (resolvedOwner.kind === 'USER') {
+    const city = await City.findById(shop.cityId).lean();
+    await ensureUserPromotedToShopkeeper({
+      user: resolvedOwner.userOwner,
+      shop,
+      city,
+    });
+  }
 
   shop.status = SHOP_STATUS.APPROVED;
   shop.publicVisible = true;
@@ -210,11 +387,17 @@ const approveShop = async (req, res) => {
     status: 'APPROVED',
     approvedAt: new Date(),
   };
+  shop.registrationDetails = {
+    ...(shop.registrationDetails || {}),
+    reviewStatus: 'APPROVED',
+    reviewedAt: new Date(),
+    rejectionReason: null,
+  };
 
   await shop.save();
 
   await sendShopkeeperStatusSms({
-    phone: owner.phone,
+    phone: resolvedOwner.phone,
     status: 'APPROVED',
     shopName: shop.shopName,
   });
@@ -250,10 +433,7 @@ const rejectShop = async (req, res) => {
 
   assertTransition({ from: shop.status, to: SHOP_STATUS.REJECTED });
 
-  const owner = await Shopkeeper.findById(shop.ownerId);
-  if (!owner) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Shop owner not found.', ERROR_CODES.SHOPKEEPER_NOT_FOUND);
-  }
+  const resolvedOwner = await resolveOwnerForShop(shop);
 
   shop.status = SHOP_STATUS.REJECTED;
   shop.publicVisible = false;
@@ -262,11 +442,17 @@ const rejectShop = async (req, res) => {
     ...(shop.verification || {}),
     status: 'REJECTED',
   };
+  shop.registrationDetails = {
+    ...(shop.registrationDetails || {}),
+    reviewStatus: 'REJECTED',
+    reviewedAt: new Date(),
+    rejectionReason: reason || null,
+  };
 
   await shop.save();
 
   await sendShopkeeperStatusSms({
-    phone: owner.phone,
+    phone: resolvedOwner.phone,
     status: 'REJECTED',
     shopName: shop.shopName,
     reason,
@@ -303,10 +489,7 @@ const suspendShop = async (req, res) => {
 
   assertTransition({ from: shop.status, to: SHOP_STATUS.SUSPENDED });
 
-  const owner = await Shopkeeper.findById(shop.ownerId);
-  if (!owner) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Shop owner not found.', ERROR_CODES.SHOPKEEPER_NOT_FOUND);
-  }
+  const resolvedOwner = await resolveOwnerForShop(shop);
 
   shop.status = SHOP_STATUS.SUSPENDED;
   shop.publicVisible = false;
@@ -314,7 +497,7 @@ const suspendShop = async (req, res) => {
   await shop.save();
 
   await sendShopkeeperStatusSms({
-    phone: owner.phone,
+    phone: resolvedOwner.phone,
     status: 'SUSPENDED',
     shopName: shop.shopName,
     reason,

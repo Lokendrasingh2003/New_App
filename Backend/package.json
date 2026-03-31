@@ -12,6 +12,8 @@
     "backup-db": "node scripts/backup.js",
     "restore-db": "node scripts/restore.js",
     "db-stats": "node scripts/dbStats.js",
+    "migrate:shop-categoryid:dry": "node scripts/backfillShopCategoryIds.js",
+    "migrate:shop-categoryid": "node scripts/backfillShopCategoryIds.js --apply",
     "cleanup-db": "node scripts/cleanup.js",
     "test": "jest --config tests/jest.config.js --detectOpenHandles",
     "test:unit": "jest --config tests/jest.unit.config.js",

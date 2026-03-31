@@ -5,6 +5,7 @@ import type { Subcategory } from './category'
 export interface Shop {
   id: string
   shopName: string
+  imageUrl?: string
   categoryId: string
   categoryName: string
   customSubcategories: Subcategory[]

@@ -27,6 +27,12 @@ const CITY_SEED = [
     latitude: 18.5204,
     longitude: 73.8567,
   },
+  {
+    name: 'Gwalior',
+    state: 'Madhya Pradesh',
+    latitude: 26.2183,
+    longitude: 78.1629,
+  },
 ];
 
 const CATEGORY_SEED = [
@@ -47,6 +53,8 @@ const SHOP_IMAGE_BY_CITY = {
     'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80',
   pune:
     'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80',
+  gwalior:
+    'https://images.unsplash.com/photo-1599599810694-4e6db9d9a4fb?auto=format&fit=crop&w=1200&q=80',
 };
 
 const PRODUCT_IMAGE_POOL = [

@@ -67,7 +67,16 @@ type CategoriesListPayload = {
   categories: Array<{
     _id: string
     name: string
+    subcategories?: Array<{
+      name: string
+    }>
   }>
+}
+
+export type CategoryMeta = {
+  id: string
+  name: string
+  subcategories: string[]
 }
 
 export type ProductUpsertInput = {
@@ -198,6 +207,11 @@ export const uploadProductImage = async (shopId: string, file: File): Promise<st
 }
 
 export const getCategoryIdByName = async (categoryName: string): Promise<string | null> => {
+  const category = await getCategoryMetaByName(categoryName)
+  return category?.id || null
+}
+
+export const getCategoryMetaByName = async (categoryName: string): Promise<CategoryMeta | null> => {
   const { data } = await api.get<ApiEnvelope<CategoriesListPayload>>('/api/categories', {
     params: { limit: 100, offset: 0 },
   })
@@ -207,5 +221,17 @@ export const getCategoryIdByName = async (categoryName: string): Promise<string 
     (category) => String(category.name || '').trim().toLowerCase() === String(categoryName || '').trim().toLowerCase()
   )
 
-  return matched?._id || null
+  if (!matched?._id) {
+    return null
+  }
+
+  return {
+    id: String(matched._id),
+    name: String(matched.name || ''),
+    subcategories: Array.isArray(matched.subcategories)
+      ? matched.subcategories
+          .map((item) => String(item?.name || '').trim())
+          .filter((name) => Boolean(name))
+      : [],
+  }
 }

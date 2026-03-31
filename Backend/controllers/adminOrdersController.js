@@ -349,6 +349,10 @@ const forceCancelAdminOrder = async (req, res) => {
   const payment = await Payment.findOne({ orderId: order._id });
   const actor = buildAdminActor(req);
 
+  if (order.payment?.mode === ORDER_PAYMENT_MODES.COD && order.payment.status !== ORDER_PAYMENT_STATUS.FAILED) {
+    order.payment.status = ORDER_PAYMENT_STATUS.FAILED;
+  }
+
   if (!refund && payment && payment.status === 'SUCCESS') {
     refund = await Refund.create({
       orderId: order._id,

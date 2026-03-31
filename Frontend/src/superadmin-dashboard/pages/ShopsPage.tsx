@@ -499,8 +499,46 @@ const ShopsPage = () => {
               </Typography>
               <Typography variant="body2">Owner: {selectedShop.ownerName}</Typography>
               <Typography variant="body2">Phone: {selectedShop.phone}</Typography>
+              <Typography variant="body2">Description: {selectedShop.description || '--'}</Typography>
               <Typography variant="body2">City: {cityNameById.get(selectedShop.cityId) ?? 'Unknown city'}</Typography>
               <Typography variant="body2">Category: {selectedShop.categoryName || 'Unknown category'}</Typography>
+              <Typography variant="body2">Address: {selectedShop.addressLine1 || '--'}</Typography>
+              <Typography variant="body2">Area: {selectedShop.area || '--'}</Typography>
+              <Typography variant="body2">Pincode: {selectedShop.pincode || '--'}</Typography>
+              <Typography variant="body2">Opening: {selectedShop.openingTime || '--'}</Typography>
+              <Typography variant="body2">Closing: {selectedShop.closingTime || '--'}</Typography>
+              <Typography variant="body2">GST: {selectedShop.gstNumber || '--'}</Typography>
+              <Typography variant="body2">Business Proof: {selectedShop.businessProofUrl || '--'}</Typography>
+              {selectedShop.businessProofUrl ? (
+                <Box
+                  component="img"
+                  src={selectedShop.businessProofUrl}
+                  alt="Business proof"
+                  sx={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                />
+              ) : null}
+              <Typography variant="body2">Identity Proof: {selectedShop.identityProofUrl || '--'}</Typography>
+              {selectedShop.identityProofUrl ? (
+                <Box
+                  component="img"
+                  src={selectedShop.identityProofUrl}
+                  alt="Identity proof"
+                  sx={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                />
+              ) : null}
+              <Typography variant="body2">Bank Holder: {selectedShop.bankAccountHolderName || '--'}</Typography>
+              <Typography variant="body2">Bank IFSC: {selectedShop.bankIfscCode || '--'}</Typography>
+              <Typography variant="body2">Bank A/C: {selectedShop.bankAccountNumberMasked || '--'}</Typography>
+              <Typography variant="body2">Review Status: {selectedShop.registrationReviewStatus || '--'}</Typography>
+              <Typography variant="body2">Image URL: {selectedShop.imageUrl || '--'}</Typography>
+              {selectedShop.imageUrl ? (
+                <Box
+                  component="img"
+                  src={selectedShop.imageUrl}
+                  alt="Shop image"
+                  sx={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                />
+              ) : null}
               <Typography variant="body2">Created: {formatDateTime(selectedShop.createdAt)}</Typography>
               <Typography variant="body2">Updated: {formatDateTime(selectedShop.updatedAt)}</Typography>
               {selectedShop.rejectReason ? (

@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import ConfirmDialog from '../components/ConfirmDialog'
 import PageHeader from '../components/PageHeader'
+import { uploadShopImage } from '../services/shopService'
 import { useShopkeeper } from '../shared/hooks/useShopkeeper'
 import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
@@ -38,13 +39,15 @@ const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 const SettingsPage = () => {
   const { shop, resetAllData } = useShopkeeperStore()
-  const { shopSettings, isLoadingShop, isSavingShop, shopError, saveShopSettings } = useShopkeeper()
+  const { shopId, shopSettings, isLoadingShop, isSavingShop, shopError, loadShopData, saveShopSettings } = useShopkeeper()
   const { showMessage } = useAppFeedback()
   const [confirmResetOpen, setConfirmResetOpen] = useState(false)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [errors, setErrors] = useState<SettingsErrors>({})
   const [saveError, setSaveError] = useState('')
   const [form, setForm] = useState({
     shopName: shop.shopName,
+    imageUrl: shop.imageUrl ?? '',
     ownerName: shop.ownerName ?? '',
     phone: shop.phone,
     city: shop.city,
@@ -61,6 +64,7 @@ const SettingsPage = () => {
   useEffect(() => {
     setForm({
       shopName: shopSettings.shopName,
+      imageUrl: shopSettings.imageUrl ?? '',
       ownerName: shopSettings.ownerName ?? '',
       phone: shopSettings.phone,
       city: shopSettings.city,
@@ -148,6 +152,28 @@ const SettingsPage = () => {
     }
   }
 
+  const handleShopImageUpload = async (file: File) => {
+    if (!shopId || isUploadingImage) {
+      return
+    }
+
+    try {
+      setSaveError('')
+      setIsUploadingImage(true)
+      await uploadShopImage(shopId, file)
+      await loadShopData()
+      showMessage('Shop image updated successfully')
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        setSaveError(error.response?.data?.error?.message || error.response?.data?.message || 'Unable to upload shop image')
+      } else {
+        setSaveError(error instanceof Error ? error.message : 'Unable to upload shop image')
+      }
+    } finally {
+      setIsUploadingImage(false)
+    }
+  }
+
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
       <Stack spacing={2.5}>
@@ -199,9 +225,99 @@ const SettingsPage = () => {
 
         <Card sx={{ border: '1px solid rgba(15,23,42,0.08)' }}>
           <CardContent>
+            <Typography variant="h6" sx={{ mb: 1.2 }}>
+              Full Profile Details
+            </Typography>
+            <Grid container spacing={1.6} sx={{ mb: 2.4 }}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Shop Name</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{shopSettings.shopName || '--'}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Owner Name</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{shopSettings.ownerName || '--'}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Category</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{shopSettings.categoryName || '--'}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Phone</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{shopSettings.phone || '--'}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Address</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {[shopSettings.addressLine1, shopSettings.area, shopSettings.city, shopSettings.pincode].filter(Boolean).join(', ') || '--'}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Opening - Closing</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {(shopSettings.businessHours.open && shopSettings.businessHours.close)
+                    ? `${shopSettings.businessHours.open} - ${shopSettings.businessHours.close}`
+                    : '--'}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Slug</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{shopSettings.slug || '--'}</Typography>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" color="text.secondary">Public URL</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, wordBreak: 'break-all' }}>{shopSettings.publicUrl || '--'}</Typography>
+              </Grid>
+            </Grid>
+
             <Typography variant="h6" sx={{ mb: 2.2 }}>
               Shop Profile
             </Typography>
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2.2 }}>
+              <Box
+                sx={{
+                  width: { xs: '100%', md: 220 },
+                  height: 160,
+                  borderRadius: 2,
+                  border: '1px solid rgba(15,23,42,0.12)',
+                  overflow: 'hidden',
+                  backgroundColor: 'rgba(15,23,42,0.03)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {form.imageUrl ? (
+                  <Box component="img" src={form.imageUrl} alt="Shop" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <Typography variant="body2" color="text.secondary">No shop image</Typography>
+                )}
+              </Box>
+
+              <Stack spacing={1.2} justifyContent="center">
+                <Button component="label" variant="outlined" disabled={isUploadingImage}>
+                  {isUploadingImage ? 'Uploading...' : form.imageUrl ? 'Change Shop Image' : 'Upload Shop Image'}
+                  <input
+                    hidden
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (!file) {
+                        return
+                      }
+
+                      void handleShopImageUpload(file)
+                      event.currentTarget.value = ''
+                    }}
+                  />
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Allowed formats: JPG, PNG, WEBP. Max size: 8MB.
+                </Typography>
+              </Stack>
+            </Stack>
+
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField

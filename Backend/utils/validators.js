@@ -12,10 +12,31 @@ const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 const authSchemas = {
   sendOtp: Joi.object({
     phone: Joi.string().pattern(indianPhoneRegex).required(),
+    purpose: Joi.string().valid('REGISTER', 'RESET_PASSWORD').optional(),
   }),
   verifyOtp: Joi.object({
     phone: Joi.string().pattern(indianPhoneRegex).required(),
     otp: Joi.string().pattern(otpRegex).required(),
+    purpose: Joi.string().valid('REGISTER', 'RESET_PASSWORD').required(),
+    name: Joi.when('purpose', {
+      is: 'REGISTER',
+      then: Joi.string().trim().min(2).max(100).required(),
+      otherwise: Joi.forbidden(),
+    }),
+    password: Joi.when('purpose', {
+      is: 'REGISTER',
+      then: Joi.string().min(6).max(50).required(),
+      otherwise: Joi.forbidden(),
+    }),
+    newPassword: Joi.when('purpose', {
+      is: 'RESET_PASSWORD',
+      then: Joi.string().min(6).max(50).required(),
+      otherwise: Joi.forbidden(),
+    }),
+  }),
+  passwordLogin: Joi.object({
+    phone: Joi.string().pattern(indianPhoneRegex).required(),
+    password: Joi.string().required(),
   }),
   refreshToken: Joi.object({
     refreshToken: Joi.string().min(20).required(),
@@ -57,6 +78,31 @@ const userSchemas = {
   }),
   addressIdParam: Joi.object({
     addressId: Joi.string().trim().min(6).max(50).required(),
+  }),
+  shopRegistrationSubmit: Joi.object({
+    shopName: Joi.string().trim().min(2).max(120).required(),
+    description: Joi.string().trim().max(600).allow('', null),
+    categoryId: objectId.required(),
+    phone: Joi.string().pattern(/^[0-9]{10}$/).optional(),
+    openingTime: Joi.string().pattern(timeRegex).required(),
+    closingTime: Joi.string().pattern(timeRegex).required(),
+    // Allow URL, file path, or uploaded asset key from mobile clients.
+    shopImageUrl: Joi.string().trim().min(3).max(500).required(),
+    addressLine1: Joi.string().trim().min(5).max(160).required(),
+    area: Joi.string().trim().min(2).max(80).required(),
+    cityId: objectId.required(),
+    pincode: Joi.string().pattern(/^\d{6}$/).required(),
+    businessProofUrl: Joi.string().trim().min(2).max(500).required(),
+    identityProofUrl: Joi.string().trim().min(2).max(500).required(),
+    gstNumber: Joi.string().trim().uppercase().pattern(/^[A-Z0-9]{6,20}$/).required(),
+    accountHolderName: Joi.string().trim().min(2).max(120).required(),
+    accountNumber: Joi.string().trim().pattern(/^\d{9,18}$/).required(),
+    ifscCode: Joi.string().trim().uppercase().pattern(ifscRegex).required(),
+    latitude: Joi.number().min(-90).max(90).optional(),
+    longitude: Joi.number().min(-180).max(180).optional(),
+  }),
+  registrationIdParam: Joi.object({
+    registrationId: objectId.required(),
   }),
 };
 
@@ -317,8 +363,8 @@ const offerSchemas = {
     scope: Joi.string().valid('SHOP', 'CATEGORIES', 'PRODUCTS').required(),
     categoryIds: Joi.when('scope', {
       is: 'CATEGORIES',
-      then: Joi.array().items(objectId).min(1).max(100).required(),
-      otherwise: Joi.array().items(objectId).max(100).optional(),
+      then: Joi.array().items(Joi.string().trim().min(1).max(120)).min(1).max(100).required(),
+      otherwise: Joi.array().items(Joi.string().trim().min(1).max(120)).max(100).optional(),
     }),
     productIds: Joi.when('scope', {
       is: 'PRODUCTS',
@@ -819,6 +865,50 @@ const adminConfigSchemas = {
   }),
 };
 
+const adminUserSchemas = {
+  listQuery: Joi.object({
+    search: Joi.string().trim().max(120).optional(),
+    verified: Joi.boolean().optional(),
+    cityId: objectId.optional(),
+    createdFrom: Joi.date().optional(),
+    createdTo: Joi.date().optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    offset: Joi.number().integer().min(0).optional(),
+  }),
+  userIdParam: Joi.object({
+    userId: objectId.required(),
+  }),
+};
+
+const adminBannerSchemas = {
+  createOrUpdate: Joi.object({
+    title: Joi.string().trim().min(3).max(100).required(),
+    imageUrl: Joi.string().trim().min(1).required(), // Accept both absolute URIs and relative paths
+    redirectUrl: Joi.string().uri().allow('', null).optional(),
+    description: Joi.string().trim().max(300).allow('', null).optional(),
+    position: Joi.number().integer().min(0).optional(),
+    isActive: Joi.boolean().optional(),
+    bannerType: Joi.string().valid('PROMOTIONAL', 'SEASONAL', 'GENERAL', 'FEATURED').optional(),
+    targetAudience: Joi.string().valid('ALL', 'NEW_USERS', 'RETURNING_USERS').optional(),
+    startDate: Joi.date().allow(null).optional(),
+    endDate: Joi.date().allow(null).optional(),
+  }),
+  listQuery: Joi.object({
+    isActive: Joi.boolean().optional(),
+    bannerType: Joi.string().valid('PROMOTIONAL', 'SEASONAL', 'GENERAL', 'FEATURED').optional(),
+    limit: Joi.number().integer().min(1).max(100).optional(),
+    offset: Joi.number().integer().min(0).optional(),
+    sortBy: Joi.string().valid('position', 'createdAt', 'updatedAt').optional(),
+    sortOrder: Joi.string().valid('asc', 'desc').optional(),
+  }),
+  bannerIdParam: Joi.object({
+    bannerId: objectId.required(),
+  }),
+  toggleActive: Joi.object({
+    isActive: Joi.boolean().required(),
+  }),
+};
+
 module.exports = {
   objectId,
   authSchemas,
@@ -844,6 +934,8 @@ module.exports = {
   couponPublicSchemas,
   adminAuditSchemas,
   adminConfigSchemas,
+  adminUserSchemas,
+  adminBannerSchemas,
   indianPhoneRegex,
   otpRegex,
   passwordRegex,

@@ -104,7 +104,10 @@ const ensureOffer = (payload: OfferSinglePayload | undefined, fallbackMessage: s
 
 export const getOffers = async (shopId: string, query: OfferQuery = {}): Promise<OffersResponse> => {
   const { data } = await api.get<ApiEnvelope<OffersListPayload>>(`/api/shops/${shopId}/offers`, {
-    params: query,
+    params: {
+      ...query,
+      _ts: Date.now(),
+    },
   })
 
   const payload = data?.data
@@ -119,7 +122,11 @@ export const getOffers = async (shopId: string, query: OfferQuery = {}): Promise
 }
 
 export const getOffer = async (shopId: string, offerId: string): Promise<Offer> => {
-  const { data } = await api.get<ApiEnvelope<OfferSinglePayload>>(`/api/shops/${shopId}/offers/${offerId}`)
+  const { data } = await api.get<ApiEnvelope<OfferSinglePayload>>(`/api/shops/${shopId}/offers/${offerId}`, {
+    params: {
+      _ts: Date.now(),
+    },
+  })
   return ensureOffer(data?.data, data?.message || 'Unable to load offer.')
 }
 
@@ -155,8 +162,9 @@ export const getOfferCategories = async (_shopId?: string): Promise<OfferOption[
 
   const { data } = await api.get<ApiEnvelope<ProductsPayload>>(`/api/shops/${_shopId}/products`, {
     params: {
-      limit: 200,
+      limit: 100,
       offset: 0,
+      _ts: Date.now(),
     },
   })
 
@@ -179,6 +187,7 @@ export const getOfferProducts = async (shopId: string): Promise<OfferOption[]> =
     params: {
       limit: 100,
       offset: 0,
+      _ts: Date.now(),
     },
   })
 

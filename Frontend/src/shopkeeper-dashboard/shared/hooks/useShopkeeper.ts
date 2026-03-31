@@ -13,6 +13,9 @@ import { useShopkeeperStore } from '../store/ShopkeeperStore'
 const buildFallbackSettings = (shop: ReturnType<typeof useShopkeeperStore>['shop']): ShopSettings => ({
   id: shop.id,
   shopName: shop.shopName,
+  imageUrl: shop.imageUrl,
+  categoryId: shop.categoryId,
+  categoryName: shop.categoryName,
   ownerName: shop.ownerName,
   phone: shop.phone,
   city: shop.city,
@@ -51,6 +54,9 @@ export const useShopkeeper = () => {
     (settings: ShopSettings) => {
       updateStoreShopSettingsRef.current({
         shopName: settings.shopName,
+        imageUrl: settings.imageUrl,
+        categoryId: settings.categoryId,
+        categoryName: settings.categoryName,
         ownerName: settings.ownerName,
         phone: settings.phone,
         city: settings.city,
@@ -64,7 +70,7 @@ export const useShopkeeper = () => {
           open: settings.businessHours.open,
           close: settings.businessHours.close,
         },
-      })
+      }, { syncRemote: false })
     },
     []
   )

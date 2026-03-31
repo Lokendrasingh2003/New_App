@@ -45,7 +45,10 @@ type ShopkeeperStoreContextType = {
   updateOffer: (offerId: string, updates: Partial<Omit<Offer, 'id' | 'createdAt'>>) => void
   toggleOfferEnabled: (offerId: string) => void
   getOfferById: (offerId: string) => Offer | undefined
-  updateShopSettings: (updates: Partial<Omit<Shop, 'id' | 'categoryId' | 'categoryName' | 'customSubcategories'>>) => void
+  updateShopSettings: (
+    updates: Partial<Omit<Shop, 'id' | 'customSubcategories'>>,
+    options?: { syncRemote?: boolean },
+  ) => void
   getPublicUrl: () => string
   resetAllData: () => void
 }
@@ -61,6 +64,7 @@ const FALLBACK_CATEGORIES: Category[] = [
 const DEFAULT_SHOP: Shop = {
   id: 'shop-unset',
   shopName: 'My Shop',
+  imageUrl: '',
   categoryId: FALLBACK_CATEGORIES[0].id,
   categoryName: FALLBACK_CATEGORIES[0].name,
   customSubcategories: [],
@@ -742,13 +746,17 @@ export const ShopkeeperStoreProvider = ({ children }: { children: React.ReactNod
   const getOfferById = (offerId: string) => offers.find((offer) => offer.id === offerId)
 
   const updateShopSettings = (
-    updates: Partial<Omit<Shop, 'id' | 'categoryId' | 'categoryName' | 'customSubcategories'>>,
+    updates: Partial<Omit<Shop, 'id' | 'customSubcategories'>>,
+    options?: { syncRemote?: boolean },
   ) => {
+    const syncRemote = options?.syncRemote !== false
+
     const nextShop: Shop = {
       ...shop,
       ...updates,
-      categoryId: shop.categoryId,
-      categoryName: shop.categoryName,
+      imageUrl: updates.imageUrl ?? shop.imageUrl,
+      categoryId: updates.categoryId ?? shop.categoryId,
+      categoryName: updates.categoryName ?? shop.categoryName,
       customSubcategories: shop.customSubcategories,
       delivery: {
         ...shop.delivery,
@@ -762,19 +770,22 @@ export const ShopkeeperStoreProvider = ({ children }: { children: React.ReactNod
     }
 
     persistShop(nextShop)
-    syncWithService(
-      services.shopService.update({
-        shopName: nextShop.shopName,
-        phone: nextShop.phone,
-        city: nextShop.city,
-        addressLine1: nextShop.addressLine1,
-        area: nextShop.area,
-        pincode: nextShop.pincode,
-        delivery: nextShop.delivery,
-        businessHours: nextShop.businessHours,
-        updatedAt: nextShop.updatedAt,
-      }),
-    )
+
+    if (syncRemote) {
+      syncWithService(
+        services.shopService.update({
+          shopName: nextShop.shopName,
+          phone: nextShop.phone,
+          city: nextShop.city,
+          addressLine1: nextShop.addressLine1,
+          area: nextShop.area,
+          pincode: nextShop.pincode,
+          delivery: nextShop.delivery,
+          businessHours: nextShop.businessHours,
+          updatedAt: nextShop.updatedAt,
+        }),
+      )
+    }
   }
 
   const getPublicUrl = () => shop.publicUrl

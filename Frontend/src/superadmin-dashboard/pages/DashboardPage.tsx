@@ -37,8 +37,16 @@ const DashboardPage = () => {
 
   const maintenanceMode = config.find((item) => item.key === 'maintenance_mode')?.value === 'true' ? 'On' : 'Off'
 
+  const totalRevenue = useMemo(() => {
+    const sum = orders
+      .filter((order) => order.status === 'delivered')
+      .reduce((acc, order) => acc + (order.total || 0), 0)
+    return `₹${sum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }, [orders])
+
   const secondaryStats = useMemo(
     () => [
+      { label: 'Total Revenue', value: totalRevenue },
       { label: 'Delivered Orders', value: orders.filter((order) => order.status === 'delivered').length },
       {
         label: 'Refunded/Cancelled Orders',
@@ -47,7 +55,7 @@ const DashboardPage = () => {
       { label: 'Active Categories', value: categories.filter((category) => category.isActive).length },
       { label: 'Maintenance Mode', value: maintenanceMode },
     ],
-    [categories, maintenanceMode, orders],
+    [categories, maintenanceMode, orders, totalRevenue],
   )
 
   const recentEvents = useMemo(() => auditEvents.slice(-8).reverse(), [auditEvents])

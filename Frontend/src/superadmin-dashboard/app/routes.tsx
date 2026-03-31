@@ -3,6 +3,7 @@ import SuperAdminApp from '../SuperAdminApp'
 import SuperAdminProtectedRoute from '../auth/SuperAdminProtectedRoute'
 import SuperAdminLayout from '../layout/SuperAdminLayout'
 import AuditLogPage from '../pages/AuditLogPage'
+import BannersPage from '../pages/BannersPage'
 import CategoriesPage from '../pages/CategoriesPage'
 import CategoryDetailsPage from '../pages/CategoryDetailsPage'
 import CitiesPage from '../pages/CitiesPage'
@@ -20,6 +21,7 @@ import SettingsPage from '../pages/SettingsPage'
 import ShopsPage from '../pages/ShopsPage'
 import ShopSubscriptionsPage from '../pages/ShopSubscriptionsPage'
 import SubscriptionPlansPage from '../pages/SubscriptionPlansPage'
+import UsersPage from '../pages/UsersPage'
 
 export const superadminRoutes = [
   {
@@ -62,6 +64,10 @@ export const superadminRoutes = [
             element: <ShopsPage />,
           },
           {
+            path: 'users',
+            element: <UsersPage />,
+          },
+          {
             path: 'orders',
             element: <OrdersPage />,
           },
@@ -80,6 +86,10 @@ export const superadminRoutes = [
           {
             path: 'coupons',
             element: <CouponsPage />,
+          },
+          {
+            path: 'banners',
+            element: <BannersPage />,
           },
           {
             path: 'audit',

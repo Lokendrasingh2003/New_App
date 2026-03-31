@@ -7,11 +7,13 @@ import RequestQuoteRoundedIcon from '@mui/icons-material/RequestQuoteRounded'
 import AssignmentReturnRoundedIcon from '@mui/icons-material/AssignmentReturnRounded'
 import PercentRoundedIcon from '@mui/icons-material/PercentRounded'
 import LocalOfferRoundedIcon from '@mui/icons-material/LocalOfferRounded'
+import ImageRoundedIcon from '@mui/icons-material/ImageRounded'
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded'
 import SubscriptionsRoundedIcon from '@mui/icons-material/SubscriptionsRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
 import ShoppingBagRoundedIcon from '@mui/icons-material/ShoppingBagRounded'
 import TuneRoundedIcon from '@mui/icons-material/TuneRounded'
+import PeopleRoundedIcon from '@mui/icons-material/PeopleRounded'
 import { Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography } from '@mui/material'
 import { NavLink } from 'react-router-dom'
 
@@ -22,11 +24,13 @@ const navItems = [
   { label: 'Cities', path: '/superadmin/cities', icon: <LocationCityRoundedIcon /> },
   { label: 'Categories', path: '/superadmin/categories', icon: <CategoryRoundedIcon /> },
   { label: 'Shops', path: '/superadmin/shops', icon: <ShoppingBagRoundedIcon /> },
+  { label: 'Users', path: '/superadmin/users', icon: <PeopleRoundedIcon /> },
   { label: 'Orders', path: '/superadmin/orders', icon: <Inventory2RoundedIcon /> },
   { label: 'Payments', path: '/superadmin/payments', icon: <PaymentsRoundedIcon /> },
   { label: 'Payouts', path: '/superadmin/payouts', icon: <RequestQuoteRoundedIcon /> },
   { label: 'Refunds', path: '/superadmin/refunds', icon: <AssignmentReturnRoundedIcon /> },
   { label: 'Coupons', path: '/superadmin/coupons', icon: <LocalOfferRoundedIcon /> },
+  { label: 'Banners', path: '/superadmin/banners', icon: <ImageRoundedIcon /> },
   { label: 'Audit Log', path: '/superadmin/audit', icon: <FactCheckRoundedIcon /> },
   { label: 'Subscriptions', path: '/superadmin/subscriptions/plans', icon: <SubscriptionsRoundedIcon /> },
   { label: 'Config', path: '/superadmin/config', icon: <TuneRoundedIcon /> },

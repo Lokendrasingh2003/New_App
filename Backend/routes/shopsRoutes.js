@@ -30,6 +30,7 @@ const {
 	getShopDashboard,
 	getShopSettings,
 	updateShopSettings,
+	uploadShopImage,
 	patchBusinessHours,
 	patchDeliveryConfig,
 	getShopStats,
@@ -98,6 +99,7 @@ router.put('/:shopId', verifyShopkeeperToken, validateShopIdParam(), validateSho
 router.get('/:shopId/dashboard', verifyShopkeeperToken, validateShopIdParam(), getShopDashboard);
 router.get('/:shopId/settings', verifyShopkeeperToken, validateShopIdParam(), getShopSettings);
 router.put('/:shopId/settings', verifyShopkeeperToken, validateShopIdParam(), validateShopSettings(), updateShopSettings);
+router.post('/:shopId/upload-image', verifyShopkeeperToken, validateShopIdParam(), upload.single('file'), uploadShopImage);
 router.patch(
 	'/:shopId/business-hours',
 	verifyShopkeeperToken,

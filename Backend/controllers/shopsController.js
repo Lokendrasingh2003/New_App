@@ -25,11 +25,18 @@ const buildDiscoverableFilter = () => ({
 });
 
 const ensureCityExists = async (cityId) => {
-  if (!mongoose.isValidObjectId(cityId)) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'City not found.', ERROR_CODES.CITY_NOT_FOUND);
+  let city = null;
+
+  // Try as ObjectId first
+  if (mongoose.isValidObjectId(cityId)) {
+    city = await City.findById(cityId).lean();
   }
 
-  const city = await City.findById(cityId).lean();
+  // Fall back to slug if ObjectId lookup didn't work
+  if (!city) {
+    city = await City.findOne({ slug: String(cityId).toLowerCase() }).lean();
+  }
+
   if (!city || !city.isActive) {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'City not found.', ERROR_CODES.CITY_NOT_FOUND);
   }
@@ -39,7 +46,7 @@ const ensureCityExists = async (cityId) => {
 
 const getCityShops = async (req, res) => {
   const { cityId } = req.params;
-  await ensureCityExists(cityId);
+  const city = await ensureCityExists(cityId);
 
   const search = (req.query.search || '').toString().trim();
   const category = (req.query.category || '').toString().trim();
@@ -54,7 +61,7 @@ const getCityShops = async (req, res) => {
   const offset = toInteger(req.query.offset, 0);
 
   const query = {
-    cityId,
+    cityId: city._id,
     ...buildDiscoverableFilter(),
   };
 

@@ -149,11 +149,20 @@ const applyStatusSideEffects = async ({ order, nextStatus, note }) => {
       order.payment.refundId = refund.refundId;
       order.payment.refundedAt = new Date();
     }
+
+    if (order.payment.mode === ORDER_PAYMENT_MODES.COD && order.payment.status !== ORDER_PAYMENT_STATUS.FAILED) {
+      order.payment.status = ORDER_PAYMENT_STATUS.FAILED;
+    }
   }
 
   if (nextStatus === ORDER_STATUS.DELIVERED && order.inventoryState === 'LOCKED') {
     await deductLockedInventory(order.items);
     order.inventoryState = 'DEDUCTED';
+  }
+
+  if (nextStatus === ORDER_STATUS.DELIVERED && order.payment.mode === ORDER_PAYMENT_MODES.COD && order.payment.status !== ORDER_PAYMENT_STATUS.SUCCESS) {
+    order.payment.status = ORDER_PAYMENT_STATUS.SUCCESS;
+    order.payment.paidAt = new Date();
   }
 
   if (nextStatus === ORDER_STATUS.DELIVERED && !order.offerStatsApplied && order.appliedOffer?.offerId) {

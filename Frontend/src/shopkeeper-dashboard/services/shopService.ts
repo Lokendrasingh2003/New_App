@@ -3,6 +3,9 @@ import api from '../../utils/axiosInstance'
 export type ShopSettings = {
   id: string
   shopName: string
+  imageUrl?: string
+  categoryId: string
+  categoryName: string
   ownerName?: string
   phone: string
   city: string
@@ -90,7 +93,12 @@ type ApiEnvelope<T> = {
 type SettingsResponsePayload = {
   shop: {
     id: string
+    _id?: string
     shopName: string
+    imageUrl?: string | null
+    categoryId?: string | null
+    categoryName?: string | null
+    category?: string | null
     ownerName?: string | null
     phone: string
     city: string
@@ -157,8 +165,11 @@ type ShopDashboardPayload = {
 }
 
 const toShopSettings = (shop: SettingsResponsePayload['shop']): ShopSettings => ({
-  id: shop.id,
+  id: String(shop.id || shop._id || ''),
   shopName: shop.shopName,
+  imageUrl: shop.imageUrl || undefined,
+  categoryId: String(shop.categoryId || ''),
+  categoryName: String(shop.categoryName || shop.category || 'Uncategorized'),
   ownerName: shop.ownerName || undefined,
   phone: shop.phone,
   city: shop.city,
@@ -316,6 +327,24 @@ export const getShopStats = async (shopId: string): Promise<ShopStatsSnapshot> =
 export const getShopDashboard = async (shopId: string): Promise<ShopDashboardData> => {
   const { data } = await api.get<ApiEnvelope<ShopDashboardPayload>>(`/api/shops/${shopId}/dashboard`)
   return toShopDashboardData(data?.data)
+}
+
+export const uploadShopImage = async (shopId: string, file: File): Promise<string> => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const { data } = await api.post<ApiEnvelope<{ imageUrl?: string }>>(`/api/shops/${shopId}/upload-image`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+
+  const imageUrl = String(data?.data?.imageUrl || '')
+  if (!imageUrl) {
+    throw new Error(data?.message || 'Unable to upload shop image.')
+  }
+
+  return imageUrl
 }
 
 export const getTodayStats = async (shopId: string): Promise<TodayStats> => {

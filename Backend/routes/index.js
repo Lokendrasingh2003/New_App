@@ -27,6 +27,9 @@ const adminSubscriptionPlansRoutes = require('./adminSubscriptionPlansRoutes');
 const adminSubscriptionsRoutes = require('./adminSubscriptionsRoutes');
 const adminAuditLogsRoutes = require('./adminAuditLogsRoutes');
 const adminConfigRoutes = require('./adminConfigRoutes');
+const adminUsersRoutes = require('./adminUsersRoutes');
+const bannersRoutes = require('./bannersRoutes');
+const adminBannersRoutes = require('./adminBannersRoutes');
 
 const router = express.Router();
 
@@ -45,6 +48,7 @@ router.use('/shopkeeper', shopkeeperRoutes);
 router.use('/shopkeeper', shopkeeperPaymentsRoutes);
 router.use('/offers', offersRoutes);
 router.use('/coupons', couponsRoutes);
+router.use('/banners', bannersRoutes);
 router.use('/admin/cities', adminCitiesRoutes);
 router.use('/admin/categories', adminCategoriesRoutes);
 router.use('/admin/shops', adminShopsRoutes);
@@ -58,5 +62,7 @@ router.use('/admin/subscription-plans', adminSubscriptionPlansRoutes);
 router.use('/admin/subscriptions', adminSubscriptionsRoutes);
 router.use('/admin/audit-logs', adminAuditLogsRoutes);
 router.use('/admin/config', adminConfigRoutes);
+router.use('/admin/users', adminUsersRoutes);
+router.use('/admin/banners', adminBannersRoutes);
 
 module.exports = router;

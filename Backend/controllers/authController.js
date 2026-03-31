@@ -15,6 +15,7 @@ const {
   listActiveSessions,
 } = require('../services/authSessionService');
 const { formatPhone, generateReferralCode } = require('../utils/authHelpers');
+const { hashPassword, comparePassword } = require('../utils/password');
 const { generateToken, generateRefreshToken, verifyToken, decodeToken } = require('../utils/jwt');
 const { sendSuccess } = require('../utils/response');
 const ApiError = require('../utils/apiError');
@@ -26,6 +27,10 @@ const {
 } = require('../services/otpService');
 
 const REFRESH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const OTP_PURPOSES = {
+  REGISTER: 'REGISTER',
+  RESET_PASSWORD: 'RESET_PASSWORD',
+};
 
 const refreshCookieOptions = {
   httpOnly: true,
@@ -82,64 +87,7 @@ const generateUniqueReferralCode = async () => {
   );
 };
 
-const sendOtp = async (req, res) => {
-  const phone = formatPhone(req.body.phone);
-  const { otp, otpExpiresAt, expiresIn } = createOtpPayload(phone);
-
-  let user = await User.findOne({ phone });
-
-  if (!user) {
-    const referralCode = await generateUniqueReferralCode();
-    user = await User.create({
-      phone,
-      otp,
-      otpExpiresAt,
-      isVerified: false,
-      referralCode,
-    });
-  } else {
-    user.otp = otp;
-    user.otpExpiresAt = otpExpiresAt;
-    await user.save();
-  }
-
-  return sendSuccess(res, {
-    statusCode: HTTP_STATUS.OK,
-    message: 'OTP sent successfully.',
-    data: {
-      expiresIn,
-    },
-  });
-};
-
-const verifyOtp = async (req, res) => {
-  const phone = formatPhone(req.body.phone);
-  const otp = req.body.otp;
-
-  assertVerifyAttemptLimit(phone);
-
-  const user = await User.findOne({ phone });
-
-  if (!user) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found.', ERROR_CODES.USER_NOT_FOUND);
-  }
-
-  if (!user.otp || !user.otpExpiresAt || user.otpExpiresAt.getTime() < Date.now()) {
-    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'OTP expired.', ERROR_CODES.OTP_EXPIRED);
-  }
-
-  if (String(user.otp) !== String(otp)) {
-    registerFailedVerifyAttempt(phone);
-    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid OTP.', ERROR_CODES.INVALID_OTP);
-  }
-
-  clearVerifyAttempts(phone);
-
-  user.isVerified = true;
-  user.otp = null;
-  user.otpExpiresAt = null;
-  await user.save();
-
+const issueUserAuthPayload = async ({ user, req }) => {
   const sessionId = require('crypto').randomUUID();
 
   const refreshToken = generateRefreshToken(
@@ -171,11 +119,158 @@ const verifyOtp = async (req, res) => {
     AUTH_ACTOR_TYPES.USER
   );
 
+  return {
+    token,
+    refreshToken,
+  };
+};
+
+const sendOtp = async (req, res) => {
+  const phone = formatPhone(req.body.phone);
+  const purpose = String(req.body.purpose || OTP_PURPOSES.REGISTER).toUpperCase();
+  const { otp, otpExpiresAt, expiresIn } = createOtpPayload(phone);
+
+  let user = await User.findOne({ phone }).select('+password');
+
+  if (purpose === OTP_PURPOSES.RESET_PASSWORD) {
+    if (!user || !user.password) {
+      throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found.', ERROR_CODES.USER_NOT_FOUND);
+    }
+
+    user.otp = otp;
+    user.otpExpiresAt = otpExpiresAt;
+    await user.save();
+
+    return sendSuccess(res, {
+      statusCode: HTTP_STATUS.OK,
+      message: 'OTP sent successfully.',
+      data: {
+        expiresIn,
+      },
+    });
+  }
+
+  if (user && user.password) {
+    throw new ApiError(HTTP_STATUS.CONFLICT, 'Account already exists. Please login.', ERROR_CODES.CONFLICT_ERROR);
+  }
+
+  if (!user) {
+    const referralCode = await generateUniqueReferralCode();
+    user = await User.create({
+      phone,
+      otp,
+      otpExpiresAt,
+      isVerified: false,
+      referralCode,
+    });
+  } else {
+    user.otp = otp;
+    user.otpExpiresAt = otpExpiresAt;
+    await user.save();
+  }
+
+  return sendSuccess(res, {
+    statusCode: HTTP_STATUS.OK,
+    message: 'OTP sent successfully.',
+    data: {
+      expiresIn,
+    },
+  });
+};
+
+const verifyOtp = async (req, res) => {
+  const phone = formatPhone(req.body.phone);
+  const otp = req.body.otp;
+  const purpose = String(req.body.purpose || '').toUpperCase();
+
+  assertVerifyAttemptLimit(phone);
+
+  const user = await User.findOne({ phone }).select('+password');
+
+  if (!user) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found.', ERROR_CODES.USER_NOT_FOUND);
+  }
+
+  if (!user.otp || !user.otpExpiresAt || user.otpExpiresAt.getTime() < Date.now()) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'OTP expired.', ERROR_CODES.OTP_EXPIRED);
+  }
+
+  if (String(user.otp) !== String(otp)) {
+    registerFailedVerifyAttempt(phone);
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid OTP.', ERROR_CODES.INVALID_OTP);
+  }
+
+  clearVerifyAttempts(phone);
+
+  if (purpose === OTP_PURPOSES.REGISTER) {
+    if (user.password) {
+      throw new ApiError(HTTP_STATUS.CONFLICT, 'Account already exists. Please login.', ERROR_CODES.CONFLICT_ERROR);
+    }
+
+    user.name = String(req.body.name || '').trim();
+    user.password = await hashPassword(req.body.password);
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiresAt = null;
+    await user.save();
+
+    return sendSuccess(res, {
+      statusCode: HTTP_STATUS.OK,
+      message: 'Registration completed successfully.',
+      data: {
+        user: getSafeUser(user),
+      },
+    });
+  }
+
+  if (purpose === OTP_PURPOSES.RESET_PASSWORD) {
+    if (!user.password) {
+      throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Password is not set for this account.', ERROR_CODES.INVALID_CREDENTIALS);
+    }
+
+    user.password = await hashPassword(req.body.newPassword);
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiresAt = null;
+    await user.save();
+
+    return sendSuccess(res, {
+      statusCode: HTTP_STATUS.OK,
+      message: 'Password reset successfully.',
+      data: {
+        success: true,
+      },
+    });
+  }
+
+  throw new ApiError(HTTP_STATUS.BAD_REQUEST, 'Invalid OTP purpose.', ERROR_CODES.VALIDATION_ERROR);
+};
+
+const loginWithPassword = async (req, res) => {
+  const phone = formatPhone(req.body.phone);
+  const password = String(req.body.password || '');
+
+  const user = await User.findOne({ phone }).select('+password');
+
+  if (!user || !user.password) {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid phone or password.', ERROR_CODES.INVALID_CREDENTIALS);
+  }
+
+  const isPasswordMatch = await comparePassword(password, user.password);
+  if (!isPasswordMatch) {
+    throw new ApiError(HTTP_STATUS.UNAUTHORIZED, 'Invalid phone or password.', ERROR_CODES.INVALID_CREDENTIALS);
+  }
+
+  user.isVerified = true;
+  await user.save();
+
+  const { token, refreshToken } = await issueUserAuthPayload({ user, req });
+
   res.cookie('refreshToken', refreshToken, refreshCookieOptions);
 
   return sendSuccess(res, {
     statusCode: HTTP_STATUS.OK,
-    message: 'OTP verified successfully.',
+    message: 'Logged in successfully.',
     data: {
       token,
       refreshToken,
@@ -311,6 +406,7 @@ const logoutAllDevices = async (req, res) => {
 module.exports = {
   sendOtp,
   verifyOtp,
+  loginWithPassword,
   logout,
   refreshToken,
   getActiveUserSessions,

@@ -136,14 +136,39 @@ const toApiPayload = (input: CouponInput) => {
     throw new Error('Backend coupons currently support only FLAT and PERCENT discount types.')
   }
 
+  const resolvedMaxUsageLimit =
+    input.usageLimitGlobal !== undefined && input.usageLimitGlobal !== null
+      ? Number(input.usageLimitGlobal)
+      : 1000
+
+  const resolvedMaxUsagePerUser =
+    input.usageLimitPerUser !== undefined && input.usageLimitPerUser !== null
+      ? Number(input.usageLimitPerUser)
+      : 1
+
+  const maxUsageLimit = Number.isFinite(resolvedMaxUsageLimit) && resolvedMaxUsageLimit >= 1 ? resolvedMaxUsageLimit : 1000
+  const maxUsagePerUser =
+    Number.isFinite(resolvedMaxUsagePerUser) && resolvedMaxUsagePerUser >= 1
+      ? Math.min(resolvedMaxUsagePerUser, maxUsageLimit)
+      : 1
+
+  const parsedMaxDiscount =
+    input.maxDiscount !== undefined && input.maxDiscount !== null ? Number(input.maxDiscount) : null
+
+  // Backend accepts maxDiscount only when > 0; for FLAT coupons we should send null.
+  const maxDiscount =
+    input.discountType === 'PERCENT' && parsedMaxDiscount !== null && Number.isFinite(parsedMaxDiscount) && parsedMaxDiscount > 0
+      ? parsedMaxDiscount
+      : null
+
   return {
     code: input.code,
     discountType: input.discountType,
     discountValue: Number(input.discountValue || 0),
-    maxDiscount: input.maxDiscount ?? null,
+    maxDiscount,
     minOrderValue: Number(input.minOrderValue || 0),
-    maxUsageLimit: Number(input.usageLimitGlobal || 0),
-    maxUsagePerUser: Number(input.usageLimitPerUser || 0),
+    maxUsageLimit,
+    maxUsagePerUser,
     validFrom: input.validFrom,
     validTill: input.validTo,
     applicableCity: input.scope.type === 'CITY' ? input.scope.cityId || null : null,

@@ -227,6 +227,20 @@ const CouponsPage = () => {
       return 'Discount value must be empty for free delivery.'
     }
 
+    const usageLimitGlobal = Number(formState.usageLimitGlobal)
+    if (!Number.isInteger(usageLimitGlobal) || usageLimitGlobal < 1) {
+      return 'Global usage limit must be a positive integer.'
+    }
+
+    const usageLimitPerUser = Number(formState.usageLimitPerUser)
+    if (!Number.isInteger(usageLimitPerUser) || usageLimitPerUser < 1) {
+      return 'Per-user usage limit must be a positive integer.'
+    }
+
+    if (usageLimitPerUser > usageLimitGlobal) {
+      return 'Per-user usage limit cannot exceed global usage limit.'
+    }
+
     if (formState.scopeType === 'CITY' && !formState.cityId) {
       return 'City is required for city scope.'
     }
@@ -246,6 +260,8 @@ const CouponsPage = () => {
     setEditingCouponId(null)
     setFormState({
       ...initialFormState,
+      usageLimitGlobal: '1000',
+      usageLimitPerUser: '1',
       validFrom: toLocalDateTimeInput(new Date().toISOString()),
       validTo: toLocalDateTimeInput(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
     })

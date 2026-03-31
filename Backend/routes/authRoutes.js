@@ -2,6 +2,7 @@ const express = require('express');
 const {
   sendOtp,
   verifyOtp,
+  loginWithPassword,
   logout,
   refreshToken,
   getActiveUserSessions,
@@ -10,6 +11,7 @@ const {
 const {
   validatePhone,
   validateOtp,
+  validatePasswordLogin,
   validateRefreshToken,
 } = require('../middleware/validation');
 const { verifyUserToken } = require('../middleware/auth');
@@ -106,6 +108,7 @@ const router = express.Router();
 
 router.post('/send-otp', otpRateLimiter, validatePhone(), sendOtp);
 router.post('/verify-otp', loginRateLimiter, validateOtp(), verifyOtp);
+router.post('/login-password', loginRateLimiter, validatePasswordLogin(), loginWithPassword);
 router.post('/logout', verifyUserToken, logout);
 router.post('/logout-all', verifyUserToken, logoutAllDevices);
 router.get('/sessions', verifyUserToken, getActiveUserSessions);

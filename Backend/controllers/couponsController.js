@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Coupon = require('../models/Coupon');
 const Order = require('../models/Order');
+const City = require('../models/City');
 const ApiError = require('../utils/apiError');
 const { sendSuccess } = require('../utils/response');
 const { HTTP_STATUS, ERROR_CODES } = require('../config/constants');
@@ -26,8 +28,11 @@ const calculateDiscount = ({ coupon, cartTotal }) => {
 
   if (coupon.discountType === 'PERCENT') {
     discount = (total * Number(coupon.discountValue || 0)) / 100;
-    if (coupon.maxDiscount !== null && coupon.maxDiscount !== undefined) {
-      discount = Math.min(discount, Number(coupon.maxDiscount || 0));
+    const parsedMaxDiscount =
+      coupon.maxDiscount !== null && coupon.maxDiscount !== undefined ? Number(coupon.maxDiscount) : null;
+
+    if (parsedMaxDiscount !== null && Number.isFinite(parsedMaxDiscount) && parsedMaxDiscount > 0) {
+      discount = Math.min(discount, parsedMaxDiscount);
     }
   } else {
     discount = Number(coupon.discountValue || 0);
@@ -141,6 +146,81 @@ const validateCoupon = async (req, res) => {
   });
 };
 
+const listPublicCoupons = async (req, res) => {
+  const now = new Date();
+  const limit = Math.min(Number.parseInt(String(req.query.limit || 20), 10) || 20, 100);
+  const offset = Math.max(Number.parseInt(String(req.query.offset || 0), 10) || 0, 0);
+  let cityId = req.query.cityId ? String(req.query.cityId) : null;
+  const shopId = req.query.shopId ? String(req.query.shopId) : null;
+
+  // Convert city slug to ObjectId if needed
+  if (cityId && !mongoose.isValidObjectId(cityId)) {
+    try {
+      const city = await City.findOne({ slug: cityId.toLowerCase() }).select('_id').lean();
+      if (city) {
+        cityId = city._id.toString();
+      }
+    } catch (error) {
+      // If city lookup fails, just keep the original cityId
+    }
+  }
+
+  const query = {
+    isActive: true,
+    validFrom: { $lte: now },
+    validTill: { $gte: now },
+  };
+
+  const andFilters = [];
+
+  if (cityId) {
+    andFilters.push({
+      $or: [{ applicableCity: null }, { applicableCity: cityId }],
+    });
+  }
+
+  if (shopId && mongoose.isValidObjectId(shopId)) {
+    andFilters.push({
+      $or: [
+        { applicableShops: { $exists: false } },
+        { applicableShops: { $size: 0 } },
+        { applicableShops: shopId },
+      ],
+    });
+  }
+
+  if (andFilters.length > 0) {
+    query.$and = andFilters;
+  }
+
+  const [coupons, total] = await Promise.all([
+    Coupon.find(query).sort({ validTill: 1, createdAt: -1 }).skip(offset).limit(limit).lean(),
+    Coupon.countDocuments(query),
+  ]);
+
+  return sendSuccess(res, {
+    statusCode: HTTP_STATUS.OK,
+    message: 'Public coupons fetched successfully.',
+    data: {
+      coupons: coupons.map((coupon) => ({
+        id: coupon._id,
+        code: coupon.code,
+        description: coupon.description || '',
+        discountType: coupon.discountType,
+        discountValue: Number(coupon.discountValue || 0),
+        maxDiscount: coupon.maxDiscount,
+        minOrderValue: Number(coupon.minOrderValue || 0),
+        expiryDate: coupon.validTill,
+      })),
+      pagination: {
+        total,
+        limit,
+        offset,
+      },
+    },
+  });
+};
+
 const countUserCouponUsage = async ({ userId, code }) => {
   if (!userId) {
     return 0;
@@ -155,6 +235,7 @@ const countUserCouponUsage = async ({ userId, code }) => {
 
 module.exports = {
   validateCoupon,
+  listPublicCoupons,
   isCouponActiveInWindow,
   calculateDiscount,
   countUserCouponUsage,

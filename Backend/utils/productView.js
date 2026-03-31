@@ -82,6 +82,7 @@ const toProductListItem = (product, shop) => {
     reviewCount: toSafeNumber(product.reviewCount, 0),
     inStock: stockInfo.inStock,
     shopName: shop?.shopName || null,
+    subcategory: product.subcategoryName || null,
   };
 };
 

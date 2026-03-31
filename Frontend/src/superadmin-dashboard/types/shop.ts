@@ -11,6 +11,20 @@ export type Shop = {
   status: ShopStatus
   isPublic: boolean
   rejectReason?: string
+  description?: string
+  addressLine1?: string
+  area?: string
+  pincode?: string
+  openingTime?: string
+  closingTime?: string
+  imageUrl?: string
+  gstNumber?: string
+  businessProofUrl?: string
+  identityProofUrl?: string
+  bankAccountHolderName?: string
+  bankIfscCode?: string
+  bankAccountNumberMasked?: string
+  registrationReviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null
   createdAt: string
   updatedAt: string
 }
