@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   CITY: '@user_app/city',
   TOKEN: '@user_app/token',
+  REFRESH_TOKEN: '@user_app/refresh_token',
   CART: '@user_app/cart',
   CART_COUPON: '@user_app/cart_coupon',
   SHOP_REG_DRAFT: '@user_app/shop_reg_draft',

@@ -2,6 +2,13 @@ import { apiRequest } from '../api/httpClient';
 import { Product } from './mockProducts';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 
+type DiscountInfo = {
+  type: 'PERCENT' | 'FLAT';
+  value: number;
+  percentage: number;
+  validTill: string | null;
+};
+
 type ProductDetailPayload = {
   product?: {
     id: string;
@@ -16,6 +23,7 @@ type ProductDetailPayload = {
       mrp: number;
       inStock: boolean;
     }>;
+    discount?: DiscountInfo | null;
   };
 };
 
@@ -26,12 +34,39 @@ const toSubcategoryId = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'uncategorized';
 
-const toDiscountLabel = (price: number, mrp: number) => {
+const toDiscountLabel = (price: number, mrp: number, productDiscount?: DiscountInfo | null) => {
+  // If product has an active offer/discount, show that instead
+  if (productDiscount && productDiscount.percentage && productDiscount.percentage > 0) {
+    return `${Math.round(productDiscount.percentage)}% OFF`;
+  }
+
   if (!mrp || mrp <= price) {
     return '0% OFF';
   }
 
   return `${Math.max(0, Math.round(((mrp - price) * 100) / mrp))}% OFF`;
+};
+
+const calculateOfferPrice = (price: number, discount?: DiscountInfo | null): number => {
+  if (!discount) {
+    return price;
+  }
+
+  // Ensure percentage is a valid number
+  const percentage = Number(discount.percentage) || 0;
+  if (percentage <= 0) {
+    return price;
+  }
+
+  if (discount.type === 'PERCENT') {
+    const discountAmount = Math.round((price * percentage) / 100);
+    return Math.max(0, price - discountAmount);
+  } else if (discount.type === 'FLAT') {
+    const flatAmount = Number(discount.value) || 0;
+    return Math.max(0, price - flatAmount);
+  }
+
+  return price;
 };
 
 export async function getProductById(shopId: string, productId: string): Promise<Product | null> {
@@ -47,9 +82,9 @@ export async function getProductById(shopId: string, productId: string): Promise
   const variants = (detail.variants || []).map((variant) => ({
     id: String(variant.id),
     label: String(variant.label),
-    price: Number(variant.price || 0),
+    price: calculateOfferPrice(Number(variant.price || 0), detail.discount),
     mrp: Number(variant.mrp || variant.price || 0),
-    discountLabel: toDiscountLabel(Number(variant.price || 0), Number(variant.mrp || variant.price || 0)),
+    discountLabel: toDiscountLabel(Number(variant.price || 0), Number(variant.mrp || variant.price || 0), detail.discount),
     inStock: Boolean(variant.inStock),
   }));
 

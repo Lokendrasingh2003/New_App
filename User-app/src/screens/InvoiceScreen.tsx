@@ -1,6 +1,8 @@
 import { NavigationProp, ParamListBase, RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View, Platform } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 import { AppButton } from '../components/ui/AppButton';
 import { AppHeader } from '../components/ui/AppHeader';
@@ -54,6 +56,96 @@ export function InvoiceScreen() {
       </Screen>
     );
   }
+
+  // Helper to generate invoice HTML
+  const getInvoiceHtml = () => {
+    return `
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            body { font-family: Arial, sans-serif; padding: 16px; }
+            .card { border: 1px solid #E5E7EB; border-radius: 12px; background: #FFF; padding: 12px; margin-bottom: 12px; }
+            .top-row, .total-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+            .block-title { font-weight: bold; margin-bottom: 4px; }
+            .table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            .table th, .table td { border: 1px solid #E5E7EB; padding: 6px; font-size: 12px; }
+            .table th { background: #F3F4F6; }
+            .total-label { font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <h2>Invoice</h2>
+          <div class="card">
+            <div class="top-row"><span>Order ID</span><span>#${toShortOrderId(order.id)}</span></div>
+            <div class="top-row"><span>Date</span><span>${formatOrderDate(order.createdAt)}</span></div>
+          </div>
+          <div class="card">
+            <div class="block-title">Customer</div>
+            <div>${order.addressSnapshot.fullName}</div>
+            <div>Phone: ${order.addressSnapshot.phone}</div>
+          </div>
+          <div class="card">
+            <div class="block-title">Delivery Address</div>
+            <div>${order.addressSnapshot.line1}
+              ${order.addressSnapshot.line2 ? `, ${order.addressSnapshot.line2}` : ''}
+              ${order.addressSnapshot.area ? `, ${order.addressSnapshot.area}` : ''}
+              ${order.addressSnapshot.landmark ? `, Landmark: ${order.addressSnapshot.landmark}` : ''}
+              <br/>${order.addressSnapshot.city} - ${order.addressSnapshot.pincode}
+            </div>
+          </div>
+          <div class="card">
+            <div class="block-title">Items</div>
+            <table class="table">
+              <thead>
+                <tr><th>Item</th><th>Unit</th><th>Total</th></tr>
+              </thead>
+              <tbody>
+                ${order.items.map(item => `
+                  <tr>
+                    <td>${item.name} × ${item.quantity}</td>
+                    <td>₹${Math.max(item.price, 0)}</td>
+                    <td>₹${Math.max(item.price * item.quantity, 0)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="block-title">Totals</div>
+            <div class="total-row"><span>MRP total</span><span>₹${mrpTotal}</span></div>
+            <div class="total-row"><span>Subtotal</span><span>₹${Math.max(order.subtotal, 0)}</span></div>
+            <div class="total-row"><span>Delivery charge</span><span>₹${Math.max(order.deliveryCharge, 0)}</span></div>
+            <div class="total-row"><span>Coupon discount</span><span>-₹${Math.max(order.discountAmount, 0)}</span></div>
+            <div class="total-row"><span class="total-label">Total paid</span><span class="total-label">₹${Math.max(order.total, 0)}</span></div>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  // Handler for download/share using expo-print and expo-sharing
+  const handleDownloadShare = async () => {
+    try {
+      const html = getInvoiceHtml();
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+      });
+      if (!uri) throw new Error('PDF not generated');
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Share Invoice PDF',
+        });
+      } else {
+        Alert.alert('Sharing not available', 'PDF saved at: ' + uri);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Invoice download/share failed.');
+    }
+  };
 
   return (
     <Screen>
@@ -143,7 +235,7 @@ export function InvoiceScreen() {
           </View>
         </View>
 
-        <AppButton title="Download / Share (Coming soon)" onPress={() => Alert.alert('Coming soon')} />
+        <AppButton title="Download / Share Invoice" onPress={handleDownloadShare} />
       </ScrollView>
     </Screen>
   );

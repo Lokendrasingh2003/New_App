@@ -112,8 +112,10 @@ function ProductCardComponent({ product, shopId, onPress }: Props) {
 
         <View style={styles.footerRow}>
           <View style={styles.priceWrap}>
-            <AppText style={styles.price}>₹{selectedVariant.price}</AppText>
-            <AppText style={styles.mrp}>₹{selectedVariant.mrp}</AppText>
+            <AppText style={styles.price}>₹{Math.round(selectedVariant.price)}</AppText>
+            {selectedVariant.price !== selectedVariant.mrp && selectedVariant.price < selectedVariant.mrp ? (
+              <AppText style={styles.mrp}>₹{selectedVariant.mrp}</AppText>
+            ) : null}
           </View>
 
           {quantity > 0 ? (
@@ -223,8 +225,10 @@ function ProductCardComponent({ product, shopId, onPress }: Props) {
                       </View>
 
                       <View style={styles.variantPriceRow}>
-                        <AppText style={styles.variantPrice}>₹{variant.price}</AppText>
-                        <AppText style={styles.variantMrp}>₹{variant.mrp}</AppText>
+                        <AppText style={styles.variantPrice}>₹{Math.round(variant.price)}</AppText>
+                        {variant.price !== variant.mrp && variant.price < variant.mrp ? (
+                          <AppText style={styles.variantMrp}>₹{variant.mrp}</AppText>
+                        ) : null}
                         <View style={styles.variantDiscountBadge}>
                           <AppText style={styles.variantDiscountText}>
                             {variant.discountLabel}

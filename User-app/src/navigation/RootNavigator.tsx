@@ -66,6 +66,8 @@ function CityNavigator() {
   );
 }
 
+import { TermsAndPrivacyScreen } from '../screens/TermsAndPrivacyScreen';
+
 function HomeNavigator() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
@@ -99,6 +101,7 @@ function HomeNavigator() {
       <HomeStack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
       <HomeStack.Screen name="OrderDetails" component={OrderDetailsScreen} />
       <HomeStack.Screen name="OrderTracking" component={OrderTrackingScreen} />
+      <HomeStack.Screen name="TermsAndPrivacy" component={TermsAndPrivacyScreen} />
     </HomeStack.Navigator>
   );
 }

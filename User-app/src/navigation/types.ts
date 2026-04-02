@@ -25,9 +25,10 @@ export type HomeStackParamList = {
   ShopListing: { categoryId?: string; title?: string } | undefined;
   SubcategoryProducts: { shopId: string; subcategoryId: string };
   AddressList: undefined;
-  AddEditAddress: { addressId?: string } | undefined;
+  AddEditAddress: { addressId?: string; returnTo?: 'checkout' } | undefined;
   HelpCenter: undefined;
   Notifications: undefined;
+  TermsAndPrivacy: undefined;
   ShopRegistration: undefined;
   SellerOnboarding: undefined;
   SellerOnboardingSuccess: { registrationId: string };

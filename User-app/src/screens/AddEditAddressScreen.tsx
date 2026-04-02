@@ -165,7 +165,12 @@ export function AddEditAddressScreen() {
 
     await saveAddress(nextAddress);
     setIsSaving(false);
-    navigation.goBack();
+
+    if (routeParams?.returnTo === 'checkout') {
+      navigation.navigate('Checkout');
+    } else {
+      navigation.goBack();
+    }
   };
 
   return (

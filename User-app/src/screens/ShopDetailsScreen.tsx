@@ -190,34 +190,27 @@ export function ShopDetailsScreen({ route, navigation }: Props) {
           <View style={styles.subcategorySection}>
             <View style={styles.sectionHeaderRow}>
               <AppText style={styles.sectionTitle}>{section.name}</AppText>
-              {Array.isArray(section.products) && section.products.length > 2 ? (
-                <Pressable
-                  onPress={() =>
-                    navigation.navigate('SubcategoryProducts', {
-                      shopId: shop.id,
-                      subcategoryId: section.id,
-                    })
-                  }
-                >
-                  <AppText style={styles.viewAllText}>See all</AppText>
-                </Pressable>
-              ) : null}
+              <Pressable
+                onPress={() =>
+                  navigation.navigate('SubcategoryProducts', {
+                    shopId: shop.id,
+                    subcategoryId: section.id,
+                  })
+                }
+              >
+                <AppText style={styles.viewAllText}>See all</AppText>
+              </Pressable>
             </View>
 
             <FlatList
-              data={section.products.slice(0, 2)}
+              data={section.products.slice(0, 5)}
               keyExtractor={(item) => item.id}
-              numColumns={2}
-              showsVerticalScrollIndicator={false}
-              scrollEnabled={false}
-              contentContainerStyle={styles.sectionRow}
-              columnWrapperStyle={styles.columnWrapper}
-              initialNumToRender={10}
-              maxToRenderPerBatch={10}
-              windowSize={10}
-              removeClippedSubviews
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              scrollEnabled={true}
+              contentContainerStyle={styles.sectionRowHorizontal}
               renderItem={({ item: product }) => (
-                <View style={styles.cardColumn}>
+                <View style={styles.cardColumnHorizontal}>
                   <ProductCard
                     product={product}
                     shopId={shop.id}
@@ -373,12 +366,20 @@ const styles = StyleSheet.create({
   sectionRow: {
     paddingRight: 0,
   },
+  sectionRowHorizontal: {
+    paddingRight: 12,
+    gap: 10,
+  },
   columnWrapper: {
     justifyContent: 'space-between',
     gap: 10,
   },
   cardColumn: {
     width: '48%',
+    marginRight: 0,
+  },
+  cardColumnHorizontal: {
+    width: 160,
     marginRight: 0,
   },
   viewCartBar: {

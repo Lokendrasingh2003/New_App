@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { env } from '../../config/env';
 import { STORAGE_KEYS } from '../../constants/storage';
+import { refreshSession } from '../auth/authService';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -67,7 +68,7 @@ const getErrorMessage = (status: number, fallback: string) => {
   return fallback;
 };
 
-export const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
+export const apiRequest = async <T>(path: string, options: RequestOptions = {}, retry = true): Promise<T> => {
   const baseUrl = getBaseUrl();
   if (!baseUrl) {
     const error = 'EXPO_PUBLIC_API_BASE_URL is not configured.';
@@ -111,6 +112,20 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
     if (!response.ok) {
       if (ignoreStatuses.includes(response.status)) {
         return (parsed?.data as T) ?? ({} as T);
+      }
+
+      // Handle 401: try refresh
+      if (response.status === 401 && retry && path !== '/api/auth/refresh-token') {
+        try {
+          await refreshSession();
+          // Retry original request once
+          return await apiRequest<T>(path, options, false);
+        } catch (refreshError) {
+          // Clear tokens if refresh fails
+          await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
+          await AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+          throw new ApiHttpError(401, 'Session expired. Please login again.');
+        }
       }
 
       const serverMessage = parsed?.error?.message || parsed?.message;

@@ -218,7 +218,7 @@ export function CheckoutScreen() {
             />
             <AppButton
               title="Add Address"
-              onPress={() => navigation.navigate('AddEditAddress')}
+              onPress={() => navigation.navigate('AddEditAddress', { returnTo: 'checkout' })}
             />
           </View>
         )}

@@ -1,3 +1,7 @@
+
+  const handleTermsPrivacy = () => {
+    navigation.navigate('TermsAndPrivacy');
+  };
 import { NavigationProp, ParamListBase, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
@@ -266,6 +270,18 @@ export function ProfileScreen() {
             title="Change City"
             subtitle={city?.name ? `Current: ${city.name}` : 'Select your city'}
             onPress={handleChangeCity}
+          />
+          <Divider spacingVertical={0} />
+          <ProfileMenuItem
+            leftIcon="📄"
+            title="Terms & Privacy"
+            subtitle="Read our terms and privacy policy"
+            onPress={() => {
+              Alert.alert(
+                'Terms & Privacy',
+                'By using this app, you agree to our terms of service and privacy policy. Your data is protected and never sold. For details, contact support.'
+              );
+            }}
           />
           <Divider spacingVertical={0} />
           <ProfileMenuItem

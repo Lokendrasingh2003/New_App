@@ -1,4 +1,6 @@
 import { apiRequest } from '../api/httpClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../../constants/storage';
 
 type SendOtpResponse = {
   expiresIn?: number;
@@ -36,9 +38,34 @@ export const verifyOtp = async (payload: {
   });
 };
 
+
 export const loginWithPassword = async (phone: string, password: string): Promise<LoginResponse> => {
-  return apiRequest<LoginResponse>('/api/auth/login-password', {
+  const response = await apiRequest<LoginResponse>('/api/auth/login-password', {
     method: 'POST',
     body: { phone, password },
   });
+  if (response.token) {
+    await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+  }
+  if (response.refreshToken) {
+    await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.refreshToken);
+  }
+  return response;
+};
+
+export const refreshSession = async (): Promise<LoginResponse> => {
+  const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+  if (!refreshToken) throw new Error('No refresh token');
+  const response = await apiRequest<LoginResponse>('/api/auth/refresh-token', {
+    method: 'POST',
+    body: { refreshToken },
+    auth: false,
+  });
+  if (response.token) {
+    await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, response.token);
+  }
+  if (response.refreshToken) {
+    await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.refreshToken);
+  }
+  return response;
 };
