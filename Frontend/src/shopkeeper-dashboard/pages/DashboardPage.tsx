@@ -1,4 +1,4 @@
-import { Alert, Box, Button, CircularProgress, Container, Grid, Skeleton, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, CircularProgress, Container, Grid, Skeleton, Stack, Typography, Avatar } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -45,7 +45,7 @@ const EMPTY_STATS: ShopStatsSnapshot = {
 const DashboardPage = () => {
   const navigate = useNavigate()
   const shopId = getShopkeeperShopId()
-  const { orders } = useShopkeeperStore()
+  const { orders, shop } = useShopkeeperStore()
   const [stats, setStats] = useState<ShopStatsSnapshot>(EMPTY_STATS)
   const [isLoadingStats, setIsLoadingStats] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -273,30 +273,40 @@ const DashboardPage = () => {
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
       <Stack spacing={2.5}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+          <Avatar
+            src={shop.imageUrl || undefined}
+            alt={shop.shopName}
+            sx={{ width: 72, height: 72, fontSize: 32, bgcolor: shop.imageUrl ? undefined : 'primary.main', boxShadow: 2 }}
+          >
+            {!shop.imageUrl && shop.shopName ? shop.shopName.charAt(0).toUpperCase() : null}
+          </Avatar>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 800, color: 'primary.main', mb: 0.2 }}>
+              {shop.shopName}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Dashboard &bull; {shop.city}{shop.area ? `, ${shop.area}` : ''}
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1 }} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
+            <Button
+              variant="outlined"
+              onClick={() => void fetchDashboardStats('refresh')}
+              startIcon={isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon />}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button variant="outlined" onClick={() => navigate('/shop/products')}>Add Product</Button>
+            <Button variant="contained" color="primary" onClick={() => navigate('/shop/offers')}>Create Offer</Button>
+          </Stack>
+        </Box>
         <PageHeader
           title="Dashboard"
           subtitle="Monitor shop performance, active operations and quick actions in one place."
-          actions={[
-            {
-              label: isRefreshing ? 'Refreshing...' : 'Refresh',
-              onClick: () => {
-                void fetchDashboardStats('refresh')
-              },
-              variant: 'outlined',
-              startIcon: isRefreshing ? <CircularProgress size={14} /> : <RefreshIcon />,
-            },
-            {
-              label: 'Add Product',
-              onClick: () => navigate('/shop/products'),
-              variant: 'outlined',
-            },
-            {
-              label: 'Create Offer',
-              onClick: () => navigate('/shop/offers'),
-              variant: 'contained',
-              color: 'primary',
-            },
-          ]}
+          actions={[]}
         />
 
         {statsError ? <Alert severity="error">{statsError}</Alert> : null}

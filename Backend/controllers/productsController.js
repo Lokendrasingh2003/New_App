@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const ProductReview = require('../models/ProductReview');
 const Shop = require('../models/Shop');
+const Offer = require('../models/Offer');
 const { sendSuccess } = require('../utils/response');
 const ApiError = require('../utils/apiError');
 const { HTTP_STATUS, ERROR_CODES } = require('../config/constants');
@@ -88,6 +89,72 @@ const createProductFilter = (query, { category, subcategory, inStock, minPrice, 
   return filter;
 };
 
+const getActiveOffersForShop = async (shopId) => {
+  const now = new Date();
+  console.log(`[getActiveOffersForShop] Fetching offers for shop: ${shopId}, now: ${now}`);
+  
+  const offers = await Offer.find({
+    shopId: shopId,
+    enabled: true,
+    'validity.startsAt': { $lte: now },
+    'validity.endsAt': { $gte: now },
+  }).lean();
+
+  console.log(`[getActiveOffersForShop] Found ${offers.length} active offers for shop ${shopId}`);
+  if (offers.length > 0) {
+    console.log('[getActiveOffersForShop] First offer:', JSON.stringify(offers[0], null, 2));
+  }
+
+  return offers;
+};
+
+const applyOffersToProducts = (products, offers) => {
+  if (!Array.isArray(products) || !Array.isArray(offers)) {
+    return products;
+  }
+
+  // Build a map of productId -> offers
+  const productOfferMap = new Map();
+  
+  offers.forEach((offer) => {
+    if (offer.scope === 'PRODUCTS' && Array.isArray(offer.productIds)) {
+      offer.productIds.forEach((productId) => {
+        const key = String(productId);
+        if (!productOfferMap.has(key)) {
+          productOfferMap.set(key, []);
+        }
+        productOfferMap.get(key).push(offer);
+      });
+    }
+  });
+
+  // Apply offers to products (use highest discount)
+  return products.map((product) => {
+    const productKey = String(product._id);
+    const applicableOffers = productOfferMap.get(productKey) || [];
+    
+    if (applicableOffers.length === 0) {
+      return product;
+    }
+
+    // Find the best (highest discount) offer
+    const bestOffer = applicableOffers.reduce((best, current) => {
+      const bestDiscount = best.type === 'PERCENT' ? best.value : 0;
+      const currentDiscount = current.type === 'PERCENT' ? current.value : 0;
+      return currentDiscount > bestDiscount ? current : best;
+    });
+
+    return {
+      ...product,
+      discount: {
+        type: bestOffer.type,
+        value: bestOffer.value,
+        validTill: bestOffer.validity?.endsAt || null,
+      },
+    };
+  });
+};
+
 const getShopProducts = async (req, res) => {
   const { shopId } = req.params;
 
@@ -135,11 +202,21 @@ const getShopProducts = async (req, res) => {
     Product.countDocuments(filter),
   ]);
 
+  // Fetch active offers and apply to products
+  const offers = await getActiveOffersForShop(shop._id);
+  console.log(`[getShopProducts] Shop: ${shop._id}, Offers found: ${offers.length}`);
+  if (offers.length > 0) {
+    console.log('[getShopProducts] Offers:', JSON.stringify(offers, null, 2));
+  }
+  
+  const productsWithOffers = applyOffersToProducts(products, offers);
+  console.log(`[getShopProducts] After applying offers, first product:`, JSON.stringify(productsWithOffers[0], null, 2));
+
   return sendSuccess(res, {
     statusCode: HTTP_STATUS.OK,
     message: 'Products fetched successfully.',
     data: {
-      products: products.map((product) => toProductListItem(product, shop)),
+      products: productsWithOffers.map((product) => toProductListItem(product, shop)),
       pagination: {
         total,
         limit,
@@ -186,12 +263,17 @@ const getProductById = async (req, res) => {
 
   const related = relatedProducts.map((item) => toProductListItem(item, shop));
 
+  // Fetch active offers and apply to product and related products
+  const offers = await getActiveOffersForShop(shop._id);
+  const productWithOffer = applyOffersToProducts([product], offers)[0];
+  const relatedWithOffers = applyOffersToProducts(relatedProducts, offers);
+
   return sendSuccess(res, {
     statusCode: HTTP_STATUS.OK,
     message: 'Product details fetched successfully.',
     data: {
       product: toProductDetail(
-        product,
+        productWithOffer,
         reviews.map((review) => ({
           id: review._id,
           userName: review.userName,
@@ -206,7 +288,7 @@ const getProductById = async (req, res) => {
           images: review.images || [],
           date: review.createdAt,
         })),
-        related,
+        relatedWithOffers.map((item) => toProductListItem(item, shop)),
         shop
       ),
     },
@@ -342,11 +424,37 @@ const searchProducts = async (req, res) => {
     Product.countDocuments(filter),
   ]);
 
+  // Fetch offers for each shop and apply them
+  const offersByShop = new Map();
+  await Promise.all(
+    Array.from(shopMap.entries()).map(async ([shopIdStr, shop]) => {
+      const offers = await getActiveOffersForShop(shop._id);
+      offersByShop.set(shopIdStr, offers);
+    })
+  );
+
+  // Group products by shop and apply offers
+  const productsByShop = new Map();
+  products.forEach((product) => {
+    const shopIdStr = String(product.shopId);
+    if (!productsByShop.has(shopIdStr)) {
+      productsByShop.set(shopIdStr, []);
+    }
+    productsByShop.get(shopIdStr).push(product);
+  });
+
+  const productsWithOffers = [];
+  productsByShop.forEach((shopProducts, shopIdStr) => {
+    const offers = offersByShop.get(shopIdStr) || [];
+    const productsWithShopOffers = applyOffersToProducts(shopProducts, offers);
+    productsWithOffers.push(...productsWithShopOffers);
+  });
+
   return sendSuccess(res, {
     statusCode: HTTP_STATUS.OK,
     message: 'Products search completed.',
     data: {
-      products: products.map((product) => toProductListItem(product, shopMap.get(String(product.shopId)))),
+      products: productsWithOffers.map((product) => toProductListItem(product, shopMap.get(String(product.shopId)))),
       pagination: {
         total,
         limit,

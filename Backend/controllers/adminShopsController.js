@@ -7,6 +7,7 @@ const City = require('../models/City');
 const ApiError = require('../utils/apiError');
 const { decryptField } = require('../utils/secureField');
 const { sendSuccess } = require('../utils/response');
+const { sendUserNotification } = require('../services/userNotificationService');
 const { logAudit, buildActorFromRequest, buildMetadataFromRequest } = require('../utils/auditLogger');
 const { HTTP_STATUS, ERROR_CODES, SHOP_STATUS, ORDER_STATUS, AUDIT_EVENT_TYPES } = require('../config/constants');
 
@@ -496,11 +497,22 @@ const suspendShop = async (req, res) => {
   shop.isActive = false;
   await shop.save();
 
+
   await sendShopkeeperStatusSms({
     phone: resolvedOwner.phone,
     status: 'SUSPENDED',
     shopName: shop.shopName,
     reason,
+  });
+
+  // Send notification to shop owner
+  await sendUserNotification({
+    userId: resolvedOwner._id,
+    type: 'status',
+    title: 'Shop Suspended',
+    message: reason || 'Your shop has been suspended by admin. Please contact support.',
+    deepLink: { screen: 'ShopRegistration' },
+    meta: { shopId: shop._id, status: 'SUSPENDED' },
   });
 
   await logAudit(

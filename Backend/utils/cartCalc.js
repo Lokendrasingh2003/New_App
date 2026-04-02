@@ -79,6 +79,11 @@ const computeDeliveryCharge = (shop, subtotal, coupon) => {
     return 0;
   }
 
+  // Add ₹50 surcharge for orders between ₹100-₹999 (minimum order but not free delivery)
+  if (subtotal >= 100 && subtotal < FREE_DELIVERY_MIN_ORDER) {
+    return Math.max(0, baseCharge + 50);
+  }
+
   return Math.max(0, baseCharge);
 };
 

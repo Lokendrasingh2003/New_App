@@ -12,6 +12,7 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
+import { getAdminShopById } from '../services/adminShopsService'
 import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { getAdminUserById, listAdminUsers } from '../services/adminUsersService'
@@ -40,6 +41,7 @@ const UsersPage = () => {
   const isInitialLoading = useInitialLoadingDelay()
 
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [shopNames, setShopNames] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all')
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
@@ -54,6 +56,19 @@ const UsersPage = () => {
         const items = await listAdminUsers({ search, verified: verifiedFilter })
         if (mounted) {
           setUsers(items)
+          // Fetch shop names for shopkeepers
+          const shopkeeperUsers = items.filter(u => u.role === 'SHOPKEEPER' && u.shopId)
+          const shopIdSet = new Set(shopkeeperUsers.map(u => u.shopId!))
+          const shopNameMap: Record<string, string> = {}
+          await Promise.all(Array.from(shopIdSet).map(async (shopId) => {
+            try {
+              const shop = await getAdminShopById(shopId)
+              shopNameMap[shopId] = shop.shopName
+            } catch {
+              shopNameMap[shopId] = '--'
+            }
+          }))
+          if (mounted) setShopNames(shopNameMap)
         }
       } catch (error) {
         if (mounted) {
@@ -122,6 +137,28 @@ const UsersPage = () => {
 
   const columns = useMemo<GridColDef<AdminUser>[]>(
     () => [
+      {
+        field: 'shopName',
+        headerName: 'Shop Name',
+        minWidth: 220,
+        flex: 1,
+        renderCell: (params: GridRenderCellParams<AdminUser>) => {
+          if (params.row.role === 'SHOPKEEPER') {
+            if (!params.row.shopId) {
+              return <Typography variant="body2" color="error">No shopId</Typography>
+            }
+            const name = shopNames[params.row.shopId]
+            if (name === undefined) {
+              return <Skeleton width={80} />
+            }
+            if (!name || name === '--') {
+              return <Typography variant="body2" color="error">Not found (ID: {params.row.shopId})</Typography>
+            }
+            return <Typography variant="body2">{name}</Typography>
+          }
+          return <Typography variant="body2" color="text.secondary">--</Typography>
+        },
+      },
       {
         field: 'name',
         headerName: 'User',

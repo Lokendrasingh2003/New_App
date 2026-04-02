@@ -43,12 +43,15 @@ const getDiscountInfo = (product, stockInfo) => {
   const now = Date.now();
   const validTill = discount.validTill ? new Date(discount.validTill).getTime() : null;
 
+  console.log(`[getDiscountInfo] Product: ${product.name}, Discount:`, JSON.stringify(discount));
+
   const isValid =
     discount.type &&
     Number(discount.value) > 0 &&
     (validTill === null || Number.isNaN(validTill) || validTill >= now);
 
   if (!isValid) {
+    console.log(`[getDiscountInfo] Discount not valid for ${product.name}`);
     return null;
   }
 
@@ -59,6 +62,8 @@ const getDiscountInfo = (product, stockInfo) => {
   } else if (discount.type === 'FLAT' && stockInfo.basePrice > 0) {
     percentage = Math.max(0, Math.min(100, (toSafeNumber(discount.value, 0) / stockInfo.basePrice) * 100));
   }
+
+  console.log(`[getDiscountInfo] Returning discount for ${product.name}:`, { type: discount.type, value: toSafeNumber(discount.value, 0), percentage });
 
   return {
     type: discount.type,

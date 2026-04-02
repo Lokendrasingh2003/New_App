@@ -47,8 +47,8 @@ type ProductFormErrors = {
 const createEmptyVariant = (): ProductVariant => ({
   id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   label: '',
-  price: 0,
-  mrp: 0,
+  price: '',
+  mrp: '',
   inStock: true,
 })
 
@@ -88,14 +88,27 @@ const ProductForm = ({
       nextErrors.variants = 'At least 1 variant is required'
     }
 
+    // Base Price
+    if (values.basePrice === '' || Number(values.basePrice) <= 0) {
+      (nextErrors as any).basePrice = 'Base price is required'
+    }
+    // Base MRP
+    if (values.baseMrp === '' || Number(values.baseMrp) <= 0) {
+      (nextErrors as any).baseMrp = 'Base MRP is required'
+    }
+    // Stock Qty
+    if (values.stockQty === '' || Number(values.stockQty) <= 0) {
+      (nextErrors as any).stockQty = 'Stock quantity is required'
+    }
+
     values.variants.forEach((variant, index) => {
       if (!variant.label.trim()) {
         nextErrors.variantErrors[index].label = 'Label is required'
       }
-      if (variant.price <= 0) {
+      if (variant.price === '' || Number(variant.price) <= 0) {
         nextErrors.variantErrors[index].price = 'Price is required'
       }
-      if (variant.mrp <= 0) {
+      if (variant.mrp === '' || Number(variant.mrp) <= 0) {
         nextErrors.variantErrors[index].mrp = 'MRP is required'
       }
     })
@@ -106,7 +119,8 @@ const ProductForm = ({
       Object.values(variantError).some(Boolean),
     )
 
-    return !nextErrors.name && !nextErrors.category && !nextErrors.subcategoryId && !nextErrors.variants && !hasVariantErrors
+    return !nextErrors.name && !nextErrors.category && !nextErrors.subcategoryId && !nextErrors.variants &&
+      !(nextErrors as any).basePrice && !(nextErrors as any).baseMrp && !(nextErrors as any).stockQty && !hasVariantErrors
   }
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,10 +284,13 @@ const ProductForm = ({
                 label="Base Price"
                 type="number"
                 fullWidth
-                value={values.basePrice}
+                value={values.basePrice === 0 ? '' : values.basePrice}
+                placeholder="Enter base price"
                 onChange={(event) =>
-                  setValues((prev) => ({ ...prev, basePrice: Number(event.target.value || 0) }))
+                  setValues((prev) => ({ ...prev, basePrice: event.target.value === '' ? '' : Number(event.target.value) }))
                 }
+                error={Boolean(errors.basePrice)}
+                helperText={errors.basePrice || ''}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>
@@ -281,10 +298,13 @@ const ProductForm = ({
                 label="Base MRP"
                 type="number"
                 fullWidth
-                value={values.baseMrp}
+                value={values.baseMrp === 0 ? '' : values.baseMrp}
+                placeholder="Enter base MRP"
                 onChange={(event) =>
-                  setValues((prev) => ({ ...prev, baseMrp: Number(event.target.value || 0) }))
+                  setValues((prev) => ({ ...prev, baseMrp: event.target.value === '' ? '' : Number(event.target.value) }))
                 }
+                error={Boolean(errors.baseMrp)}
+                helperText={errors.baseMrp || ''}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>
@@ -292,10 +312,13 @@ const ProductForm = ({
                 label="Stock Qty"
                 type="number"
                 fullWidth
-                value={values.stockQty}
+                value={values.stockQty === 0 ? '' : values.stockQty}
+                placeholder="Enter stock quantity"
                 onChange={(event) =>
-                  setValues((prev) => ({ ...prev, stockQty: Math.max(0, Number(event.target.value || 0)) }))
+                  setValues((prev) => ({ ...prev, stockQty: event.target.value === '' ? '' : Number(event.target.value) }))
                 }
+                error={Boolean(errors.stockQty)}
+                helperText={errors.stockQty || ''}
               />
             </Grid>
             <Grid size={{ xs: 12, md: 3 }}>
@@ -337,6 +360,19 @@ const ProductForm = ({
             <Typography variant="body2" color="text.secondary">
               Selected: {values.images.length > 0 ? values.images.join(', ') : 'No files selected'}
             </Typography>
+            {selectedImageFiles.length > 0 && (
+              <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+                {selectedImageFiles.map((file, idx) => (
+                  <Box key={idx} sx={{ width: 80, height: 80, border: '1px solid #eee', borderRadius: 2, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa' }}>
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </Box>
+                ))}
+              </Stack>
+            )}
           </Stack>
         </CardContent>
       </Card>
@@ -386,7 +422,8 @@ const ProductForm = ({
                       type="number"
                       fullWidth
                       value={variant.price}
-                      onChange={(event) => handleVariantChange(variant.id, 'price', Number(event.target.value || 0))}
+                      placeholder="Enter price"
+                      onChange={(event) => handleVariantChange(variant.id, 'price', event.target.value)}
                       error={Boolean(errors.variantErrors[index]?.price)}
                       helperText={errors.variantErrors[index]?.price}
                     />
@@ -397,7 +434,8 @@ const ProductForm = ({
                       type="number"
                       fullWidth
                       value={variant.mrp}
-                      onChange={(event) => handleVariantChange(variant.id, 'mrp', Number(event.target.value || 0))}
+                      placeholder="Enter MRP"
+                      onChange={(event) => handleVariantChange(variant.id, 'mrp', event.target.value)}
                       error={Boolean(errors.variantErrors[index]?.mrp)}
                       helperText={errors.variantErrors[index]?.mrp}
                     />

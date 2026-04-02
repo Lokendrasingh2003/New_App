@@ -11,6 +11,7 @@ const { lockInventory, releaseInventory, ensureAvailableForOrder } = require('..
 const { createPaymentUrl, issueRefund } = require('../services/paymentService');
 const { resolveShopCommission, calculateCommissionAmount } = require('../services/commissionService');
 const { sendOrderConfirmation, sendOrderReceivedToShop, sendOrderStatusUpdate } = require('../services/notificationService');
+const { sendUserNotification } = require('../services/userNotificationService');
 const {
   HTTP_STATUS,
   ERROR_CODES,
@@ -276,6 +277,16 @@ const createOrder = async (req, res) => {
     await Cart.deleteOne({ _id: cart._id });
 
     await Promise.all([sendOrderConfirmation({ user, order }), sendOrderReceivedToShop({ shop, order })]);
+
+    // Send notification to user
+    await sendUserNotification({
+      userId: user._id,
+      type: 'order',
+      title: 'Order placed',
+      message: `Your order ${order.orderId} has been placed successfully!`,
+      deepLink: { tab: 'Orders', screen: 'OrderDetailsScreen', params: { orderId: order.orderId } },
+      meta: { orderId: order.orderId },
+    });
 
     return sendSuccess(res, {
       statusCode: HTTP_STATUS.CREATED,

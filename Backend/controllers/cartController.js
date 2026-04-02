@@ -582,7 +582,13 @@ const estimateShipping = async (req, res) => {
     deliveryCharge += 20;
   }
 
-  if (Number(cart.subtotal || 0) >= FREE_DELIVERY_MIN_ORDER) {
+  // Add ₹50 surcharge for orders between ₹100-₹999 (minimum order but not free delivery)
+  const subtotalAmount = Number(cart.subtotal || 0);
+  if (subtotalAmount >= 100 && subtotalAmount < FREE_DELIVERY_MIN_ORDER) {
+    deliveryCharge += 50;
+  }
+
+  if (subtotalAmount >= FREE_DELIVERY_MIN_ORDER) {
     deliveryCharge = 0;
   }
 

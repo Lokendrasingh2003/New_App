@@ -16,6 +16,7 @@ const {
   sendRefundCompleted,
   sendRefundFailed,
 } = require('../services/notificationService');
+const { sendUserNotification } = require('../services/userNotificationService');
 const {
   HTTP_STATUS,
   ERROR_CODES,
@@ -393,6 +394,18 @@ const forceCancelAdminOrder = async (req, res) => {
 
   const user = await User.findById(order.userId);
   await sendOrderStatusUpdate({ user, order, status: ORDER_STATUS.CANCELLED });
+
+  // Send notification to user about status change
+  if (user) {
+    await sendUserNotification({
+      userId: user._id,
+      type: 'status',
+      title: `Order status updated`,
+      message: `Your order ${order.orderId} status is now ${order.status}.`,
+      deepLink: { tab: 'Orders', screen: 'OrderDetailsScreen', params: { orderId: order.orderId } },
+      meta: { orderId: order.orderId, status: order.status },
+    });
+  }
 
   await logAudit(
     AUDIT_EVENT_TYPES.ORDER_FORCE_CANCELLED,
