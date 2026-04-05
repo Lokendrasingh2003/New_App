@@ -75,7 +75,12 @@ function ProductCardComponent({ product, shopId, onPress }: Props) {
       </View>
 
       <Image
-        source={{ uri: product.imageUrl ?? `https://picsum.photos/seed/${product.id}/220/220` }}
+        source={{
+          uri:
+            product.imageUrl && product.imageUrl.startsWith('http')
+              ? product.imageUrl
+              : `https://cdn-icons-png.flaticon.com/512/2331/2331966.png`,
+        }}
         style={styles.image}
         resizeMode="cover"
       />

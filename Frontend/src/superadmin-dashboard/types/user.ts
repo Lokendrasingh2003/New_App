@@ -5,6 +5,7 @@ export type AdminUser = {
   role: 'USER' | 'SHOPKEEPER'
   shopkeeperId: string | null
   shopId: string | null
+  shopName: string | null
   name: string | null
   email: string | null
   cityId: string | null
@@ -44,6 +45,7 @@ export type AdminUserDetail = {
   role: 'USER' | 'SHOPKEEPER'
   shopkeeperId: string | null
   shopId: string | null
+  shopName: string | null
   name: string | null
   email: string | null
   cityId: string | null

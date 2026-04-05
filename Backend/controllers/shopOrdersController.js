@@ -74,9 +74,15 @@ const getSort = (sort) => {
 const toOrderList = (order, customer) => ({
   orderId: order.orderId,
   customerName: customer?.name || customer?.phone || 'Customer',
+  customerPhone: customer?.phone || '-',
   total: Number(order.pricing?.total || 0),
+  paymentMode: order.payment?.mode || ORDER_PAYMENT_MODES.COD,
+  paymentStatus: order.payment?.status || ORDER_PAYMENT_STATUS.PENDING,
   status: order.status,
   date: order.createdAt,
+  itemsCount: Array.isArray(order.items)
+    ? order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    : 0,
 });
 
 const toOrderDetail = (order, customer) => ({
@@ -325,7 +331,7 @@ const getTodayOrderStats = async (req, res) => {
   const [todayOrders, earningsResult, statusBreakdown] = await Promise.all([
     Order.countDocuments({ shopId, createdAt: { $gte: dayStart } }),
     Order.aggregate([
-      { $match: { shopId: shopObjectId, createdAt: { $gte: dayStart } } },
+      { $match: { shopId: shopObjectId, status: ORDER_STATUS.DELIVERED, createdAt: { $gte: dayStart } } },
       { $group: { _id: null, total: { $sum: '$pricing.total' } } },
     ]),
     Order.aggregate([
@@ -367,8 +373,14 @@ const getOrdersAnalytics = async (req, res) => {
     },
   };
 
+  const revenueMatch = {
+    ...match,
+    status: ORDER_STATUS.DELIVERED,
+  };
+
   const [
     totalOrders,
+    deliveredOrders,
     earningsResult,
     byStatus,
     byDay,
@@ -376,10 +388,11 @@ const getOrdersAnalytics = async (req, res) => {
     topCategories,
   ] = await Promise.all([
     Order.countDocuments(match),
-    Order.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: '$pricing.total' } } }]),
+    Order.countDocuments(revenueMatch),
+    Order.aggregate([{ $match: revenueMatch }, { $group: { _id: null, total: { $sum: '$pricing.total' } } }]),
     Order.aggregate([{ $match: match }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
     Order.aggregate([
-      { $match: match },
+      { $match: revenueMatch },
       {
         $group: {
           _id:
@@ -393,7 +406,7 @@ const getOrdersAnalytics = async (req, res) => {
       { $sort: { '_id.date': 1, '_id.year': 1, '_id.week': 1 } },
     ]),
     Order.aggregate([
-      { $match: match },
+      { $match: revenueMatch },
       { $unwind: '$items' },
       {
         $group: {
@@ -407,7 +420,7 @@ const getOrdersAnalytics = async (req, res) => {
       { $limit: 10 },
     ]),
     Order.aggregate([
-      { $match: match },
+      { $match: revenueMatch },
       { $unwind: '$items' },
       {
         $lookup: {
@@ -430,7 +443,7 @@ const getOrdersAnalytics = async (req, res) => {
   ]);
 
   const totalEarnings = Number(Number(earningsResult?.[0]?.total || 0).toFixed(2));
-  const averageOrderValue = totalOrders > 0 ? Number((totalEarnings / totalOrders).toFixed(2)) : 0;
+  const averageOrderValue = deliveredOrders > 0 ? Number((totalEarnings / deliveredOrders).toFixed(2)) : 0;
 
   const ordersByStatus = Object.fromEntries(byStatus.map((entry) => [entry._id, entry.count]));
 

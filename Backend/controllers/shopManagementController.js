@@ -10,7 +10,7 @@ const Shopkeeper = require('../models/Shopkeeper');
 const QRCode = require('qrcode');
 const ApiError = require('../utils/apiError');
 const { sendSuccess } = require('../utils/response');
-const { HTTP_STATUS, ERROR_CODES, SHOPKEEPER_STATUS, SHOP_STATUS } = require('../config/constants');
+const { HTTP_STATUS, ERROR_CODES, SHOPKEEPER_STATUS, SHOP_STATUS, ORDER_STATUS } = require('../config/constants');
 
 const toSlug = (value) =>
   String(value || '')
@@ -320,7 +320,7 @@ const getShopDashboard = async (req, res) => {
     Order.countDocuments({ shopId: shop._id }),
     Order.countDocuments({ shopId: shop._id, status: 'DELIVERED' }),
     Order.aggregate([
-      { $match: { shopId: shop._id } },
+      { $match: { shopId: shop._id, status: ORDER_STATUS.DELIVERED } },
       {
         $group: {
           _id: null,
@@ -581,11 +581,11 @@ const computeShopStats = async (shop) => {
     }),
     Order.countDocuments({ shopId: shop._id, createdAt: { $gte: dayStart } }),
     Order.aggregate([
-      { $match: { shopId: shop._id } },
+      { $match: { shopId: shop._id, status: ORDER_STATUS.DELIVERED } },
       { $group: { _id: null, total: { $sum: '$pricing.total' } } },
     ]),
     Order.aggregate([
-      { $match: { shopId: shop._id, createdAt: { $gte: dayStart } } },
+      { $match: { shopId: shop._id, status: ORDER_STATUS.DELIVERED, createdAt: { $gte: dayStart } } },
       { $group: { _id: null, total: { $sum: '$pricing.total' } } },
     ]),
     ProductReview.aggregate([
@@ -616,6 +616,7 @@ const computeShopStats = async (shop) => {
     activeOffers,
     todayOrders,
     todayEarnings: Number(Number(earningsToday?.[0]?.total || 0).toFixed(2)),
+    calculationBasis: 'DELIVERED_ORDERS',
     lastUpdated: new Date(),
   };
 
@@ -637,7 +638,10 @@ const getShopStats = async (req, res) => {
   const { shop } = await ensureOwnerShop({ shopkeeperId: req.shopkeeper.id, shopId });
 
   const cacheLastUpdated = shop.cachedStats?.lastUpdated ? new Date(shop.cachedStats.lastUpdated).getTime() : 0;
-  const hasFreshCache = cacheLastUpdated && Date.now() - cacheLastUpdated < STATS_CACHE_TTL_MS;
+  const hasFreshCache =
+    cacheLastUpdated &&
+    Date.now() - cacheLastUpdated < STATS_CACHE_TTL_MS &&
+    shop.cachedStats?.calculationBasis === 'DELIVERED_ORDERS';
 
   const stats = hasFreshCache ? shop.cachedStats : await computeShopStats(shop);
 

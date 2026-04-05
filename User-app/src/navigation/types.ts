@@ -45,7 +45,13 @@ export type HomeStackParamList = {
     | undefined;
   Checkout: undefined;
   Coupons: { returnTo?: 'cart' | 'checkout'; shopId?: string } | undefined;
-  Payment: { orderId: string };
+  Payment: {
+    orderId?: string;
+    cartId?: string;
+    addressId?: string;
+    couponCode?: string | null;
+    totalAmount?: number;
+  };
   Invoice: { orderId: string };
   OrderSuccess: { orderId: string };
   OrderDetails: { orderId: string };

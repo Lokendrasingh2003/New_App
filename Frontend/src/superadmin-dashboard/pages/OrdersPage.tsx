@@ -32,7 +32,7 @@ import { useInitialLoadingDelay } from '../hooks/useInitialLoadingDelay'
 
 const ORDER_STATUSES: Array<'all' | OrderStatus> = [
   'all',
-  'pending_payment',
+  'new',
   'confirmed',
   'accepted',
   'preparing',
@@ -45,7 +45,7 @@ const ORDER_STATUSES: Array<'all' | OrderStatus> = [
 const PAYMENT_STATUSES: Array<'all' | PaymentStatus> = ['all', 'pending', 'success', 'failed', 'refunded']
 
 const orderStatusLabelMap: Record<OrderStatus, string> = {
-  pending_payment: 'Pending Payment',
+  new: 'New',
   confirmed: 'Confirmed',
   accepted: 'Accepted',
   preparing: 'Preparing',
@@ -56,7 +56,7 @@ const orderStatusLabelMap: Record<OrderStatus, string> = {
 }
 
 const orderStatusColorMap: Record<OrderStatus, 'warning' | 'info' | 'success' | 'error' | 'default'> = {
-  pending_payment: 'warning',
+  new: 'info',
   confirmed: 'info',
   accepted: 'info',
   preparing: 'info',
@@ -243,8 +243,8 @@ const OrdersPage = () => {
         renderCell: (params: GridRenderCellParams<Order, OrderStatus>) => (
           <Chip
             size="small"
-            label={orderStatusLabelMap[params.value ?? 'pending_payment']}
-            color={orderStatusColorMap[params.value ?? 'pending_payment']}
+            label={orderStatusLabelMap[params.value ?? 'new']}
+            color={orderStatusColorMap[params.value ?? 'new']}
           />
         ),
       },

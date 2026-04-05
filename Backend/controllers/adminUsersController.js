@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Shop = require('../models/Shop');
+const Shopkeeper = require('../models/Shopkeeper');
 const City = require('../models/City');
 const ApiError = require('../utils/apiError');
 const { sendSuccess } = require('../utils/response');
@@ -94,9 +95,15 @@ const listUsers = async (req, res) => {
 
   const userObjectIds = users.map((user) => user._id);
   const userIdStrings = users.map((user) => String(user._id));
+  const shopkeeperIdStrings = users
+    .map((user) => (user.shopkeeperId ? String(user.shopkeeperId) : null))
+    .filter(Boolean);
+  const ownerIdStrings = Array.from(new Set([...userIdStrings, ...shopkeeperIdStrings]));
+  const shopObjectIds = users.map((user) => toObjectId(user.shopId)).filter(Boolean);
+  const shopkeeperObjectIds = shopkeeperIdStrings.map((id) => toObjectId(id)).filter(Boolean);
   const cityObjectIds = users.map((user) => user.cityId).filter(Boolean);
 
-  const [ordersAgg, shopsAgg, cities] = await Promise.all([
+  const [ordersAgg, shopsAgg, cities, relatedShops, shopkeepers] = await Promise.all([
     userObjectIds.length
       ? Order.aggregate([
           { $match: { userId: { $in: userObjectIds }, status: 'DELIVERED' } },
@@ -110,12 +117,11 @@ const listUsers = async (req, res) => {
           },
         ])
       : [],
-    userIdStrings.length
+    ownerIdStrings.length
       ? Shop.aggregate([
           {
             $match: {
-              ownerType: 'USER',
-              ownerId: { $in: userIdStrings },
+              ownerId: { $in: ownerIdStrings },
             },
           },
           {
@@ -142,18 +148,52 @@ const listUsers = async (req, res) => {
         ])
       : [],
     cityObjectIds.length ? City.find({ _id: { $in: cityObjectIds } }, { _id: 1, name: 1 }).lean() : [],
+    shopObjectIds.length || ownerIdStrings.length
+      ? Shop.find(
+          {
+            $or: [
+              ...(shopObjectIds.length ? [{ _id: { $in: shopObjectIds } }] : []),
+              ...(ownerIdStrings.length ? [{ ownerId: { $in: ownerIdStrings } }] : []),
+            ],
+          },
+          { _id: 1, shopName: 1, ownerId: 1, createdAt: 1 }
+        )
+          .sort({ createdAt: -1 })
+          .lean()
+      : [],
+    shopkeeperObjectIds.length
+      ? Shopkeeper.find({ _id: { $in: shopkeeperObjectIds } }, { _id: 1, businessInfo: 1 }).lean()
+      : [],
   ]);
 
   const orderMap = new Map(ordersAgg.map((item) => [String(item._id), item]));
   const shopMap = new Map(shopsAgg.map((item) => [String(item._id), item]));
   const cityMap = new Map(cities.map((city) => [String(city._id), city.name]));
+  const shopByIdMap = new Map(relatedShops.map((shop) => [String(shop._id), shop]));
+  const shopkeeperNameMap = new Map(
+    shopkeepers.map((shopkeeper) => [String(shopkeeper._id), shopkeeper.businessInfo?.businessName || null])
+  );
+  const latestShopByOwnerIdMap = new Map();
+
+  relatedShops.forEach((shop) => {
+    const ownerId = String(shop.ownerId || '');
+    if (ownerId && !latestShopByOwnerIdMap.has(ownerId)) {
+      latestShopByOwnerIdMap.set(ownerId, shop);
+    }
+  });
 
   const payload = users.map((user) => {
     const orderStats = orderMap.get(String(user._id));
-    const shopStats = shopMap.get(String(user._id));
+    const statsOwnerId = user.role === 'SHOPKEEPER' && user.shopkeeperId ? String(user.shopkeeperId) : String(user._id);
+    const shopStats = shopMap.get(statsOwnerId);
     const defaultAddress = Array.isArray(user.addresses)
       ? user.addresses.find((address) => address.isDefault) || user.addresses[0]
       : null;
+    const resolvedShop =
+      (user.shopId ? shopByIdMap.get(String(user.shopId)) : null) ||
+      (user.shopkeeperId ? latestShopByOwnerIdMap.get(String(user.shopkeeperId)) : null) ||
+      latestShopByOwnerIdMap.get(String(user._id)) ||
+      null;
 
     return {
       id: user._id,
@@ -167,7 +207,10 @@ const listUsers = async (req, res) => {
       referredBy: user.referredBy || null,
       role: user.role || 'USER',
       shopkeeperId: user.shopkeeperId || null,
-      shopId: user.shopId || null,
+      shopId: user.shopId || resolvedShop?._id || null,
+      shopName:
+        resolvedShop?.shopName ||
+        (user.shopkeeperId ? shopkeeperNameMap.get(String(user.shopkeeperId)) || null : null),
       defaultAddress,
       addressesCount: Array.isArray(user.addresses) ? user.addresses.length : 0,
       savedPaymentMethodsCount: Array.isArray(user.savedPaymentMethods) ? user.savedPaymentMethods.length : 0,
@@ -226,7 +269,12 @@ const getUserById = async (req, res) => {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, 'User not found.', ERROR_CODES.USER_NOT_FOUND);
   }
 
-  const [city, orders, ordersAgg, registrations] = await Promise.all([
+  const ownerIds = [String(user._id)];
+  if (user.shopkeeperId) {
+    ownerIds.push(String(user.shopkeeperId));
+  }
+
+  const [city, orders, ordersAgg, registrations, currentShop, shopkeeper] = await Promise.all([
     user.cityId ? City.findById(user.cityId, { _id: 1, name: 1 }).lean() : null,
     Order.find({ userId: user._id }, { orderId: 1, status: 1, pricing: 1, createdAt: 1 })
       .sort({ createdAt: -1 })
@@ -243,12 +291,15 @@ const getUserById = async (req, res) => {
         },
       },
     ]),
-    Shop.find(
-      { ownerType: 'USER', ownerId: String(user._id) },
-      { _id: 1, shopName: 1, status: 1, createdAt: 1, registrationDetails: 1 }
-    )
+    Shop.find({ ownerId: { $in: ownerIds } }, { _id: 1, shopName: 1, status: 1, createdAt: 1, registrationDetails: 1 })
       .sort({ createdAt: -1 })
       .lean(),
+    user.shopId
+      ? Shop.findById(user.shopId, { _id: 1, shopName: 1, status: 1 }).lean()
+      : Shop.findOne({ ownerId: { $in: ownerIds } }, { _id: 1, shopName: 1, status: 1 })
+          .sort({ createdAt: -1 })
+          .lean(),
+    user.shopkeeperId ? Shopkeeper.findById(user.shopkeeperId, { _id: 1, businessInfo: 1 }).lean() : null,
   ]);
 
   const orderStats = ordersAgg[0] || {};
@@ -272,7 +323,8 @@ const getUserById = async (req, res) => {
         referredBy: user.referredBy || null,
         role: user.role || 'USER',
         shopkeeperId: user.shopkeeperId || null,
-        shopId: user.shopId || null,
+        shopId: user.shopId || currentShop?._id || null,
+        shopName: currentShop?.shopName || shopkeeper?.businessInfo?.businessName || registrations[0]?.shopName || null,
         orderStats: {
           count: Number(orderStats.orderCount || 0),
           totalSpent: Number(Number(orderStats.totalSpent || 0).toFixed(2)),

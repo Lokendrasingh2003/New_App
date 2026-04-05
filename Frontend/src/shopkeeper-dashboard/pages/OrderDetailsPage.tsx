@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Container, Grid, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Container, Grid, Stack, Typography } from '@mui/material'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -14,6 +14,59 @@ import {
 } from '../services/orderService'
 import type { OrderDetail } from '../types/order'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
+
+const env = import.meta.env as Record<string, string | undefined>
+const backendOrigin = (env.VITE_API_BASE_URL || env.REACT_APP_API_BASE_URL || 'http://localhost:5000').replace(/\/api\/?$/i, '')
+
+const getOrderItemImageSrc = (imagePath?: string | null) => {
+  if (!imagePath) {
+    return ''
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(imagePath)) {
+    return imagePath
+  }
+
+  const normalizedPath = imagePath.replace(/\\/g, '/')
+  if (normalizedPath.startsWith('/')) {
+    return `${backendOrigin}${normalizedPath}`
+  }
+
+  return `${backendOrigin}/${normalizedPath}`
+}
+
+const formatPaymentModeLabel = (paymentMode?: string) => (paymentMode === 'COD' ? 'Cash on Delivery' : 'Online / UPI')
+const formatPaymentStatusLabel = (paymentStatus?: string) => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'Paid'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'Refunded'
+  }
+
+  return 'Unpaid'
+}
+
+const formatPaymentStatusColor = (paymentStatus?: string): 'success' | 'warning' | 'error' | 'info' => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'success'
+  }
+
+  if (normalized === 'FAILED') {
+    return 'error'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'info'
+  }
+
+  return 'warning'
+}
 
 const OrderDetailsPage = () => {
   const { orderId } = useParams<{ orderId: string }>()
@@ -229,10 +282,18 @@ const OrderDetailsPage = () => {
                 <Typography variant="caption" color="text.secondary">
                   Payment
                 </Typography>
-                <Typography variant="body1">{order.payment.mode}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {order.items.length} items
-                </Typography>
+                <Typography variant="body1">{formatPaymentModeLabel(order.payment.mode)}</Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {order.items.length} items
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label={formatPaymentStatusLabel(order.payment.status)}
+                    color={formatPaymentStatusColor(order.payment.status)}
+                    variant="outlined"
+                  />
+                </Stack>
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>
                 <Typography variant="caption" color="text.secondary">
@@ -288,18 +349,78 @@ const OrderDetailsPage = () => {
           <CardContent>
             <Typography variant="h6" sx={{ mb: 1.5 }}>Items</Typography>
             <Stack spacing={1.2}>
-              {order.items.map((item) => (
-                <Box
-                  key={`${item.productId}-${item.variantId || item.variantLabel}`}
-                  sx={{ display: 'flex', justifyContent: 'space-between', border: '1px solid rgba(15,23,42,0.08)', borderRadius: 1.5, p: 1.25 }}
-                >
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{item.productName}</Typography>
-                    <Typography variant="caption" color="text.secondary">{item.variantLabel} • Qty {item.quantity}</Typography>
+              {order.items.map((item) => {
+                const itemImage = getOrderItemImageSrc(item.image)
+
+                return (
+                  <Box
+                    key={`${item.productId}-${item.variantId || item.variantLabel}`}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      border: '1px solid rgba(15,23,42,0.08)',
+                      borderRadius: 1.5,
+                      p: 1.25,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, flex: 1 }}>
+                      {itemImage ? (
+                        <Box
+                          component="img"
+                          src={itemImage}
+                          alt={item.productName}
+                          sx={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 1.5,
+                            objectFit: 'cover',
+                            border: '1px solid rgba(15,23,42,0.08)',
+                            bgcolor: 'grey.100',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 1.5,
+                            border: '1px solid rgba(15,23,42,0.08)',
+                            bgcolor: 'grey.100',
+                            color: 'text.secondary',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0,
+                            fontSize: 11,
+                            textAlign: 'center',
+                            px: 0.5,
+                          }}
+                        >
+                          No Image
+                        </Box>
+                      )}
+
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                          {item.productName}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {item.variantLabel} • Qty {item.quantity}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          ₹{item.price} each
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      ₹{item.price * item.quantity}
+                    </Typography>
                   </Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>₹{item.price * item.quantity}</Typography>
-                </Box>
-              ))}
+                )
+              })}
             </Stack>
           </CardContent>
         </Card>

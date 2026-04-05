@@ -438,6 +438,11 @@ const getAdminOrderStats = async (req, res) => {
     match.createdAt = dateRange;
   }
 
+  const revenueMatch = {
+    ...match,
+    status: ORDER_STATUS.DELIVERED,
+  };
+
   const [
     totalOrders,
     revenueAgg,
@@ -449,13 +454,13 @@ const getAdminOrderStats = async (req, res) => {
     topProductsAgg,
   ] = await Promise.all([
     Order.countDocuments(match),
-    Order.aggregate([{ $match: match }, { $group: { _id: null, totalRevenue: { $sum: '$pricing.total' } } }]),
-    Order.aggregate([{ $match: match }, { $group: { _id: null, averageOrderValue: { $avg: '$pricing.total' } } }]),
+    Order.aggregate([{ $match: revenueMatch }, { $group: { _id: null, totalRevenue: { $sum: '$pricing.total' } } }]),
+    Order.aggregate([{ $match: revenueMatch }, { $group: { _id: null, averageOrderValue: { $avg: '$pricing.total' } } }]),
     Order.aggregate([{ $match: match }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
     Order.aggregate([{ $match: match }, { $group: { _id: '$cityId', count: { $sum: 1 } } }]),
     Order.aggregate([{ $match: match }, { $group: { _id: '$payment.status', count: { $sum: 1 } } }]),
     Order.aggregate([
-      { $match: match },
+      { $match: revenueMatch },
       {
         $group: {
           _id: '$shopId',
@@ -485,7 +490,7 @@ const getAdminOrderStats = async (req, res) => {
       },
     ]),
     Order.aggregate([
-      { $match: match },
+      { $match: revenueMatch },
       { $unwind: '$items' },
       {
         $group: {

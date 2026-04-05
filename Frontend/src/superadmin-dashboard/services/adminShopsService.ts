@@ -68,6 +68,23 @@ type RegistrationApi = {
   rejectionReason?: string | null
 }
 
+type ShopStatsApi = {
+  totalOrders?: number
+  earnings?: number
+  commission?: number
+  payableAmount?: number
+  rating?: number
+  productsCount?: number
+  activeSubscriptions?: number
+}
+
+type ShopEarningsPayload = {
+  totalOrders?: number
+  totalEarnings?: number
+  commission?: number
+  payableAmount?: number
+}
+
 type ShopDetailPayload = {
   shop: ShopDetailApi
   owner?: OwnerApi | null
@@ -76,7 +93,7 @@ type ShopDetailPayload = {
     name?: string
   } | null
   registration?: RegistrationApi | null
-  stats?: Record<string, unknown>
+  stats?: ShopStatsApi
 }
 
 const env = import.meta.env as Record<string, string | undefined>
@@ -142,6 +159,8 @@ const toShop = (
   owner?: OwnerApi | null,
   summary?: ShopListItemApi,
   registration?: RegistrationApi | null,
+  stats?: ShopStatsApi | null,
+  earnings?: ShopEarningsPayload | null,
 ): Shop => ({
   id: String(detail._id || summary?.id || summary?._id || ''),
   shopName: String(detail.shopName || summary?.shopName || ''),
@@ -152,6 +171,20 @@ const toShop = (
   slug: String(detail.slug || ''),
   status: toFrontendStatus(detail.status || summary?.status),
   isPublic: Boolean(detail.publicVisible),
+  totalOrders: Number(earnings?.totalOrders ?? stats?.totalOrders ?? 0),
+  totalEarnings: Number(earnings?.totalEarnings ?? stats?.earnings ?? 0),
+  commission:
+    earnings?.commission !== undefined
+      ? Number(earnings.commission)
+      : stats?.commission !== undefined
+        ? Number(stats.commission)
+        : undefined,
+  payableAmount:
+    earnings?.payableAmount !== undefined
+      ? Number(earnings.payableAmount)
+      : stats?.payableAmount !== undefined
+        ? Number(stats.payableAmount)
+        : undefined,
   rejectReason: registration?.rejectionReason || undefined,
   description: detail.description || undefined,
   addressLine1: detail.addressLine1 || undefined,
@@ -172,16 +205,23 @@ const toShop = (
 })
 
 export const getAdminShopById = async (shopId: string): Promise<Shop> => {
-  const { data } = await http.get<ApiEnvelope<ShopDetailPayload>>(`/api/admin/shops/${shopId}`, {
-    headers: getAdminHeaders(),
-  })
+  const [detailResponse, earningsResponse] = await Promise.all([
+    http.get<ApiEnvelope<ShopDetailPayload>>(`/api/admin/shops/${shopId}`, {
+      headers: getAdminHeaders(),
+    }),
+    http
+      .get<ApiEnvelope<ShopEarningsPayload>>(`/api/admin/shops/${shopId}/earnings`, {
+        headers: getAdminHeaders(),
+      })
+      .catch(() => null),
+  ])
 
-  const payload = data?.data
+  const payload = detailResponse.data?.data
   if (!payload?.shop) {
-    throw new Error(data?.message || 'Shop not found.')
+    throw new Error(detailResponse.data?.message || 'Shop not found.')
   }
 
-  return toShop(payload.shop, payload.owner, undefined, payload.registration)
+  return toShop(payload.shop, payload.owner, undefined, payload.registration, payload.stats, earningsResponse?.data?.data)
 }
 
 export const listAdminShops = async (): Promise<Shop[]> => {
@@ -222,7 +262,7 @@ export const listAdminShops = async (): Promise<Shop[]> => {
             )
           }
 
-          return toShop(payload.shop, payload.owner, summary, payload.registration)
+          return toShop(payload.shop, payload.owner, summary, payload.registration, payload.stats)
         } catch {
           return toShop(
             {

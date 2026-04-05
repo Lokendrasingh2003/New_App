@@ -34,6 +34,15 @@ type OrderListPayload = {
   }
 }
 
+export type AdminOrderStats = {
+  totalOrders: number
+  totalRevenue: number
+  averageOrderValue: number
+  ordersByStatus: Record<string, number>
+}
+
+type OrderStatsPayload = AdminOrderStats
+
 type RefundPayload = {
   refund?: {
     id?: string
@@ -85,7 +94,7 @@ const mapOrderStatus = (status: string | undefined, paymentStatus: PaymentStatus
   }
 
   if (normalized === 'NEW') {
-    return paymentStatus === 'pending' ? 'pending_payment' : 'confirmed'
+    return paymentStatus === 'failed' ? 'cancelled' : 'new'
   }
 
   return 'confirmed'
@@ -163,6 +172,23 @@ export const listAdminOrders = async (): Promise<Order[]> => {
     return (data?.data?.orders || []).map(mapOrder)
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Unable to load orders.'))
+  }
+}
+
+export const getAdminOrderStats = async (): Promise<AdminOrderStats> => {
+  try {
+    const { data } = await http.get<ApiEnvelope<OrderStatsPayload>>('/api/admin/orders/stats', {
+      headers: getAdminHeaders(),
+    })
+
+    return {
+      totalOrders: Number(data?.data?.totalOrders || 0),
+      totalRevenue: Number(data?.data?.totalRevenue || 0),
+      averageOrderValue: Number(data?.data?.averageOrderValue || 0),
+      ordersByStatus: data?.data?.ordersByStatus || {},
+    }
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Unable to load order stats.'))
   }
 }
 

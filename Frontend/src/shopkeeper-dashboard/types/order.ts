@@ -1,8 +1,10 @@
 export type OrderStatus = 'NEW' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED'
 
 export type PaymentMode = 'COD' | 'ONLINE'
+export type OrderPaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED'
 
 export interface Order {
+  paymentStatus?: OrderPaymentStatus
   id: string
   shortId: string
   customerName: string

@@ -127,10 +127,9 @@ const ProductEditPage = () => {
       throw new Error('Unable to resolve product category.')
     }
 
-    const variants = values.variants.map((variant, index) => {
-      const fallbackQty = index === 0 ? Number(values.stockQty || 0) : 0
-      const stockQty = Math.max(0, Number(variant.stockQty ?? fallbackQty))
-      const inStock = Boolean(values.inStock && variant.inStock && stockQty > 0)
+    const variants = values.variants.map((variant) => {
+      const stockQty = Math.max(0, Number(variant.stockQty || 0))
+      const inStock = Boolean(variant.inStock && stockQty > 0)
 
       return {
         id: variant.id,

@@ -142,18 +142,12 @@ export function CheckoutScreen() {
         }
       }
 
-      const response = await apiRequest<{ orderId: string }>('/api/orders/create', {
-        method: 'POST',
-        auth: true,
-        body: {
-          cartId: latestCartId,
-          addressId: selectedAddress.id,
-          paymentMode: 'COD',
-          couponCode: appliedCoupon?.code,
-        },
+      navigation.navigate('Payment', {
+        cartId: latestCartId,
+        addressId: selectedAddress.id,
+        couponCode: appliedCoupon?.code ?? null,
+        totalAmount: grandTotal,
       });
-
-      navigation.navigate('Payment', { orderId: response.orderId });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to place order. Please try again.';
       if (message.toLowerCase().includes('outside service area')) {

@@ -167,9 +167,11 @@ export function CartScreen() {
                 <Image
                   source={{
                     uri:
-                      item.product.imageUrl ??
-                      item.product.image ??
-                      `https://picsum.photos/seed/${item.product.id}/220/220`,
+                      item.product.imageUrl && item.product.imageUrl.startsWith('http')
+                        ? item.product.imageUrl
+                        : item.product.image && item.product.image.startsWith('http')
+                        ? item.product.image
+                        : 'https://cdn-icons-png.flaticon.com/512/2331/2331966.png', // default placeholder
                   }}
                   style={styles.itemImage}
                   resizeMode="cover"

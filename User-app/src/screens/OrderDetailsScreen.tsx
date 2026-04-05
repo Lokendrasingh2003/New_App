@@ -199,11 +199,13 @@ export function OrderDetailsScreen() {
               onPress={() => navigation.navigate('OrderTracking', { orderId: order.id })}
             />
 
-            <AppButton
-              title="View Invoice"
-              variant="secondary"
-              onPress={() => navigation.navigate('Invoice', { orderId: order.id })}
-            />
+            {order.status === 'delivered' && (
+              <AppButton
+                title="View Invoice"
+                variant="secondary"
+                onPress={() => navigation.navigate('Invoice', { orderId: order.id })}
+              />
+            )}
 
             {order.shopId ? (
               <AppButton

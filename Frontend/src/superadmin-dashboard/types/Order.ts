@@ -1,5 +1,5 @@
 export type OrderStatus =
-  | 'pending_payment'
+  | 'new'
   | 'confirmed'
   | 'accepted'
   | 'preparing'

@@ -1,6 +1,8 @@
 import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getAdminOrderStats, type AdminOrderStats } from '../services/adminOrdersService'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
+import { useAppSnackbar } from '../ui/AppSnackbarProvider'
 import EmptyState from '../ui/EmptyState'
 import PageHeader from '../ui/PageHeader'
 
@@ -24,38 +26,78 @@ const StatCard = ({ label, value }: StatCardProps) => (
 
 const DashboardPage = () => {
   const { cities, shops, orders, categories, config, auditEvents } = useSuperAdminStore()
+  const { showError } = useAppSnackbar()
+  const [orderStats, setOrderStats] = useState<AdminOrderStats | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadStats = async () => {
+      try {
+        const stats = await getAdminOrderStats()
+        if (mounted) {
+          setOrderStats(stats)
+        }
+      } catch (error) {
+        if (mounted) {
+          showError(error instanceof Error ? error.message : 'Could not load dashboard stats.')
+        }
+      }
+    }
+
+    loadStats()
+
+    return () => {
+      mounted = false
+    }
+  }, [showError])
+
+  const totalOrders = orderStats?.totalOrders ?? orders.length
+  const statusCounts = orderStats?.ordersByStatus || {}
+  const getStatusCount = (status: string) =>
+    Number(statusCounts[status] ?? statusCounts[status.toLowerCase()] ?? statusCounts[status.toUpperCase()] ?? 0)
+
+  const deliveredOrders = orderStats
+    ? getStatusCount('delivered')
+    : orders.filter((order) => order.status === 'delivered').length
+
+  const refundedCancelledOrders = orderStats
+    ? getStatusCount('refunded') + getStatusCount('cancelled')
+    : orders.filter((order) => order.status === 'refunded' || order.status === 'cancelled').length
 
   const topStats = useMemo(
     () => [
       { label: 'Active Cities', value: cities.filter((city) => city.isActive).length },
       { label: 'Total Shops', value: shops.length },
       { label: 'Pending Approvals', value: shops.filter((shop) => shop.status === 'pending_approval').length },
-      { label: 'Total Orders', value: orders.length },
+      { label: 'Total Orders', value: totalOrders },
     ],
-    [cities, orders.length, shops],
+    [cities, shops, totalOrders],
   )
 
   const maintenanceMode = config.find((item) => item.key === 'maintenance_mode')?.value === 'true' ? 'On' : 'Off'
 
   const totalRevenue = useMemo(() => {
-    const sum = orders
-      .filter((order) => order.status === 'delivered')
-      .reduce((acc, order) => acc + (order.total || 0), 0)
+    const sum =
+      orderStats?.totalRevenue ??
+      orders
+        .filter((order) => order.status === 'delivered')
+        .reduce((acc, order) => acc + (order.total || 0), 0)
     return `₹${sum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }, [orders])
+  }, [orderStats, orders])
 
   const secondaryStats = useMemo(
     () => [
       { label: 'Total Revenue', value: totalRevenue },
-      { label: 'Delivered Orders', value: orders.filter((order) => order.status === 'delivered').length },
+      { label: 'Delivered Orders', value: deliveredOrders },
       {
         label: 'Refunded/Cancelled Orders',
-        value: orders.filter((order) => order.status === 'refunded' || order.status === 'cancelled').length,
+        value: refundedCancelledOrders,
       },
       { label: 'Active Categories', value: categories.filter((category) => category.isActive).length },
       { label: 'Maintenance Mode', value: maintenanceMode },
     ],
-    [categories, maintenanceMode, orders, totalRevenue],
+    [categories, deliveredOrders, maintenanceMode, refundedCancelledOrders, totalRevenue],
   )
 
   const recentEvents = useMemo(() => auditEvents.slice(-8).reverse(), [auditEvents])

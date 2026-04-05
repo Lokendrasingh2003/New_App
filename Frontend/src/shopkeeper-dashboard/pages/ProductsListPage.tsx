@@ -64,6 +64,9 @@ const getProductImageSrc = (imagePath?: string) => {
   return `${backendOrigin}/${normalizedPath}`
 }
 
+const getVariantStockQty = (product: Product) =>
+  product.variants.reduce((total, variant) => total + Math.max(0, Number(variant.stockQty || 0)), 0)
+
 const ProductsListPage = () => {
   const navigate = useNavigate()
   const shopId = getShopkeeperShopId()
@@ -73,7 +76,7 @@ const ProductsListPage = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [pageError, setPageError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('ALL')
+  const [subcategoryFilter, setSubcategoryFilter] = useState('ALL')
   const [stockFilter, setStockFilter] = useState<StockFilter>('ALL')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('ALL')
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 })
@@ -97,7 +100,6 @@ const ProductsListPage = () => {
 
           const response = await getProducts(shopId, {
             search: searchQuery.trim() || undefined,
-            category: categoryFilter === 'ALL' ? undefined : categoryFilter,
             active:
               activeFilter === 'ALL'
                 ? undefined
@@ -119,34 +121,42 @@ const ProductsListPage = () => {
     }, 320)
 
     return () => window.clearTimeout(timer)
-  }, [activeFilter, categoryFilter, searchQuery, shopId])
+  }, [activeFilter, searchQuery, shopId])
 
-  const categories = useMemo(
-    () => Array.from(new Set(products.map((item) => item.category))).sort(),
+  const subcategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          products
+            .map((item) => String(item.subcategory || '').trim())
+            .filter((item) => item.length > 0),
+        ),
+      ).sort(),
     [products],
   )
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
+      const variantStockQty = getVariantStockQty(product)
       const matchesSearch = product.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-      const matchesCategory = categoryFilter === 'ALL' || product.category === categoryFilter
+      const matchesSubcategory = subcategoryFilter === 'ALL' || product.subcategory === subcategoryFilter
       const matchesStock =
         stockFilter === 'ALL' ||
-        (stockFilter === 'LOW' && product.stockQty > 0 && product.stockQty <= 10) ||
-        (stockFilter === 'OUT' && product.stockQty <= 0) ||
-        (stockFilter === 'IN' && product.stockQty > 0)
+        (stockFilter === 'LOW' && variantStockQty > 0 && variantStockQty <= 10) ||
+        (stockFilter === 'OUT' && variantStockQty <= 0) ||
+        (stockFilter === 'IN' && variantStockQty > 0)
       const matchesActive =
         activeFilter === 'ALL' ||
         (activeFilter === 'ACTIVE' && product.active) ||
         (activeFilter === 'INACTIVE' && !product.active)
 
-      return matchesSearch && matchesCategory && matchesStock && matchesActive
+      return matchesSearch && matchesSubcategory && matchesStock && matchesActive
     })
-  }, [products, searchQuery, categoryFilter, stockFilter, activeFilter])
+  }, [products, searchQuery, subcategoryFilter, stockFilter, activeFilter])
 
   useEffect(() => {
     setPaginationModel((prev) => ({ ...prev, page: 0 }))
-  }, [searchQuery, categoryFilter, stockFilter, activeFilter])
+  }, [searchQuery, subcategoryFilter, stockFilter, activeFilter])
 
   const toUpsertPayload = (product: Product, activeOverride?: boolean) => {
     if (!product.categoryId) {
@@ -258,19 +268,14 @@ const ProductsListPage = () => {
       ),
     },
     {
-      field: 'category',
-      headerName: 'Category / Subcategory',
+      field: 'subcategory',
+      headerName: 'Subcategory',
       flex: 1,
       minWidth: 150,
       renderCell: (params: GridRenderCellParams) => (
-        <Stack spacing={0.1}>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            {params.row.category}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {params.row.subcategory || '-'}
-          </Typography>
-        </Stack>
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          {params.row.subcategory || '-'}
+        </Typography>
       ),
     },
     {
@@ -300,11 +305,12 @@ const ProductsListPage = () => {
     },
     {
       field: 'stockQty',
-      headerName: 'Stock Qty',
+      headerName: 'Variant Qty',
       flex: 0.7,
-      minWidth: 90,
+      minWidth: 100,
       align: 'center',
       headerAlign: 'center',
+      valueGetter: (_, row) => getVariantStockQty(row as Product),
     },
     {
       field: 'inStock',
@@ -392,8 +398,11 @@ const ProductsListPage = () => {
 
   const viewProduct = viewProductId ? filteredProducts.find((item) => item.id === viewProductId) : null
   const activeProductsCount = products.filter((item) => item.active).length
-  const lowStockCount = products.filter((item) => item.stockQty > 0 && item.stockQty <= 10).length
-  const outOfStockCount = products.filter((item) => item.stockQty <= 0).length
+  const lowStockCount = products.filter((item) => {
+    const variantStockQty = getVariantStockQty(item)
+    return variantStockQty > 0 && variantStockQty <= 10
+  }).length
+  const outOfStockCount = products.filter((item) => getVariantStockQty(item) <= 0).length
 
   return (
     <Container maxWidth="xl" sx={{ py: 2.5 }}>
@@ -459,16 +468,16 @@ const ProductsListPage = () => {
             />
 
             <FormControl sx={{ minWidth: 170 }}>
-              <InputLabel>Category</InputLabel>
+              <InputLabel>Subcategory</InputLabel>
               <Select
-                label="Category"
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
+                label="Subcategory"
+                value={subcategoryFilter}
+                onChange={(event) => setSubcategoryFilter(event.target.value)}
               >
                 <MenuItem value="ALL">All</MenuItem>
-                {categories.map((category) => (
-                  <MenuItem key={category} value={category}>
-                    {category}
+                {subcategories.map((subcategory) => (
+                  <MenuItem key={subcategory} value={subcategory}>
+                    {subcategory}
                   </MenuItem>
                 ))}
               </Select>
@@ -628,13 +637,37 @@ const ProductsListPage = () => {
         <DialogTitle>Product Details</DialogTitle>
         <DialogContent>
           {viewProduct && (
-            <Box sx={{ display: 'grid', gap: 1 }}>
+            <Box sx={{ display: 'grid', gap: 1.25 }}>
               <Typography variant="body2"><strong>Name:</strong> {viewProduct.name}</Typography>
-              <Typography variant="body2"><strong>Category:</strong> {viewProduct.category} / {viewProduct.subcategory || '-'}</Typography>
-              <Typography variant="body2"><strong>Price:</strong> ₹{viewProduct.basePrice} (MRP ₹{viewProduct.baseMrp})</Typography>
-              <Typography variant="body2"><strong>Stock Qty:</strong> {viewProduct.stockQty}</Typography>
-              <Typography variant="body2"><strong>Variants:</strong> {viewProduct.variants.length}</Typography>
+              <Typography variant="body2"><strong>Subcategory:</strong> {viewProduct.subcategory || '-'}</Typography>
+              <Typography variant="body2"><strong>Total Variant Qty:</strong> {getVariantStockQty(viewProduct)}</Typography>
               <Typography variant="body2"><strong>Status:</strong> {viewProduct.active ? 'Active' : 'Inactive'}</Typography>
+
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                  All Variants
+                </Typography>
+                <Stack spacing={1}>
+                  {viewProduct.variants.map((variant) => (
+                    <Box
+                      key={variant.id}
+                      sx={{
+                        p: 1.25,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        bgcolor: 'background.default',
+                      }}
+                    >
+                      <Typography variant="body2"><strong>Label:</strong> {variant.label || '-'}</Typography>
+                      <Typography variant="body2"><strong>Price:</strong> ₹{Number(variant.price || 0)}</Typography>
+                      <Typography variant="body2"><strong>MRP:</strong> ₹{Number(variant.mrp || 0)}</Typography>
+                      <Typography variant="body2"><strong>Qty:</strong> {Math.max(0, Number(variant.stockQty || 0))}</Typography>
+                      <Typography variant="body2"><strong>In Stock:</strong> {variant.inStock ? 'Yes' : 'No'}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
             </Box>
           )}
         </DialogContent>

@@ -1,6 +1,6 @@
 import { NavigationProp, ParamListBase, RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppButton } from '../components/ui/AppButton';
 import { AppHeader } from '../components/ui/AppHeader';
@@ -10,6 +10,7 @@ import { Screen } from '../components/ui/Screen';
 import { SectionHeader } from '../components/ui/SectionHeader';
 import { useCart } from '../contexts/CartContext';
 import { HomeStackParamList } from '../navigation/types';
+import { apiRequest } from '../services/api/httpClient';
 import { getOrderById } from '../services/orders/orderService';
 import { Order } from '../types/order';
 
@@ -35,27 +36,94 @@ export function PaymentScreen() {
   const [isPaying, setIsPaying] = useState(false);
 
   useEffect(() => {
+    const existingOrderId = route.params?.orderId;
+
+    if (!existingOrderId) {
+      setOrder(null);
+      return;
+    }
+
     const loadOrder = async () => {
-      const nextOrder = await getOrderById(route.params.orderId);
+      const nextOrder = await getOrderById(existingOrderId);
       setOrder(nextOrder);
     };
 
     loadOrder();
-  }, [route.params.orderId]);
+  }, [route.params?.orderId]);
 
-  const payableAmount = useMemo(() => Math.max(order?.total ?? 0, 0), [order?.total]);
+  const payableAmount = useMemo(
+    () => Math.max(order?.total ?? route.params?.totalAmount ?? 0, 0),
+    [order?.total, route.params?.totalAmount],
+  );
 
   const handlePayNow = async () => {
-    if (!order) {
-      return;
+    let finalOrderId = order?.id ?? route.params?.orderId;
+
+    try {
+      setIsPaying(true);
+
+      const normalizedPaymentMode = selectedMethod === 'cod' ? 'COD' : 'ONLINE';
+
+      if (!finalOrderId) {
+        const cartId = route.params?.cartId;
+        const addressId = route.params?.addressId;
+
+        if (!cartId || !addressId) {
+          Alert.alert('Unable to continue', 'Order information is missing. Please go back to checkout and try again.');
+          return;
+        }
+
+        const response = await apiRequest<{ orderId: string }>('/api/orders/create', {
+          method: 'POST',
+          auth: true,
+          body: {
+            cartId,
+            addressId,
+            paymentMode: normalizedPaymentMode,
+            couponCode: route.params?.couponCode ?? undefined,
+          },
+        });
+
+        finalOrderId = response.orderId;
+      }
+
+      if (selectedMethod !== 'cod' && finalOrderId) {
+        await wait(800);
+        await apiRequest('/api/payments/verify', {
+          method: 'POST',
+          auth: true,
+          body: {
+            orderId: finalOrderId,
+            paymentId: `mock_${Date.now()}`,
+            signature: 'MOCK_PAYMENT_SUCCESS_SIGNATURE',
+          },
+        });
+      } else {
+        await wait(800);
+      }
+
+      clearCart();
+      navigation.navigate('OrderSuccess', { orderId: finalOrderId });
+    } catch (error) {
+      if (selectedMethod !== 'cod' && finalOrderId) {
+        try {
+          await apiRequest(`/api/orders/${encodeURIComponent(finalOrderId)}/cancel`, {
+            method: 'POST',
+            auth: true,
+            body: {
+              reason: 'Online payment failed or was not completed.',
+            },
+          });
+        } catch {
+          // ignore cleanup failure and still show the original payment error
+        }
+      }
+
+      const message = error instanceof Error ? error.message : 'Unable to complete payment. Please try again.';
+      Alert.alert('Payment failed', `${message}\n\nThe order has been cancelled.`);
+    } finally {
+      setIsPaying(false);
     }
-
-    setIsPaying(true);
-    await wait(800);
-    clearCart();
-    setIsPaying(false);
-
-    navigation.navigate('OrderSuccess', { orderId: order.id });
   };
 
   return (
@@ -63,7 +131,7 @@ export function PaymentScreen() {
       <AppHeader />
       <SectionHeader title="Payment" />
 
-      {!order ? (
+      {!order && !route.params?.cartId ? (
         <View style={styles.emptyWrap}>
           <EmptyState title="Order not found" description="Please place order again from checkout." />
         </View>
@@ -71,7 +139,7 @@ export function PaymentScreen() {
         <>
           <View style={styles.summaryCard}>
             <AppText style={styles.summaryTitle}>Order Details</AppText>
-            <AppText style={styles.summaryText}>Order ID: {order.id}</AppText>
+            <AppText style={styles.summaryText}>Order ID: {order?.id ?? 'Will be generated after payment'}</AppText>
             <AppText style={styles.summaryAmount}>₹{payableAmount}</AppText>
           </View>
 

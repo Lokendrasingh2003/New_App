@@ -4,6 +4,10 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   MenuItem,
   Skeleton,
@@ -12,10 +16,11 @@ import {
   Typography,
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
-import { getAdminShopById } from '../services/adminShopsService'
 import { useEffect, useMemo, useState } from 'react'
 import DataGridContainer from '../modules/cities/DataGridContainer'
+import { getAdminShopById } from '../services/adminShopsService'
 import { getAdminUserById, listAdminUsers } from '../services/adminUsersService'
+import type { Shop } from '../types/shop'
 import type { AdminUser, AdminUserDetail } from '../types/user'
 import { useAppSnackbar } from '../ui/AppSnackbarProvider'
 import EmptyState from '../ui/EmptyState'
@@ -41,7 +46,9 @@ const UsersPage = () => {
   const isInitialLoading = useInitialLoadingDelay()
 
   const [users, setUsers] = useState<AdminUser[]>([])
-  const [shopNames, setShopNames] = useState<Record<string, string>>({})
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(null)
+  const [selectedShop, setSelectedShop] = useState<Shop | null>(null)
+  const [isLoadingShopDetail, setIsLoadingShopDetail] = useState(false)
   const [search, setSearch] = useState('')
   const [verifiedFilter, setVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all')
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
@@ -56,19 +63,6 @@ const UsersPage = () => {
         const items = await listAdminUsers({ search, verified: verifiedFilter })
         if (mounted) {
           setUsers(items)
-          // Fetch shop names for shopkeepers
-          const shopkeeperUsers = items.filter(u => u.role === 'SHOPKEEPER' && u.shopId)
-          const shopIdSet = new Set(shopkeeperUsers.map(u => u.shopId!))
-          const shopNameMap: Record<string, string> = {}
-          await Promise.all(Array.from(shopIdSet).map(async (shopId) => {
-            try {
-              const shop = await getAdminShopById(shopId)
-              shopNameMap[shopId] = shop.shopName
-            } catch {
-              shopNameMap[shopId] = '--'
-            }
-          }))
-          if (mounted) setShopNames(shopNameMap)
         }
       } catch (error) {
         if (mounted) {
@@ -117,6 +111,39 @@ const UsersPage = () => {
     }
   }, [selectedUserId, showError])
 
+  useEffect(() => {
+    if (!selectedShopId) {
+      setSelectedShop(null)
+      return
+    }
+
+    let mounted = true
+
+    const loadShopDetail = async () => {
+      try {
+        setIsLoadingShopDetail(true)
+        const detail = await getAdminShopById(selectedShopId)
+        if (mounted) {
+          setSelectedShop(detail)
+        }
+      } catch (error) {
+        if (mounted) {
+          showError(error instanceof Error ? error.message : 'Could not load shop details.')
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingShopDetail(false)
+        }
+      }
+    }
+
+    loadShopDetail()
+
+    return () => {
+      mounted = false
+    }
+  }, [selectedShopId, showError])
+
   const filteredUsers = useMemo(() => {
     const searchValue = search.trim().toLowerCase()
 
@@ -129,7 +156,8 @@ const UsersPage = () => {
         user.phone.toLowerCase().includes(searchValue) ||
         (user.name || '').toLowerCase().includes(searchValue) ||
         (user.email || '').toLowerCase().includes(searchValue) ||
-        (user.cityName || '').toLowerCase().includes(searchValue)
+        (user.cityName || '').toLowerCase().includes(searchValue) ||
+        (user.shopName || '').toLowerCase().includes(searchValue)
 
       return verifiedMatch && searchMatch
     })
@@ -143,20 +171,20 @@ const UsersPage = () => {
         minWidth: 220,
         flex: 1,
         renderCell: (params: GridRenderCellParams<AdminUser>) => {
-          if (params.row.role === 'SHOPKEEPER') {
-            if (!params.row.shopId) {
-              return <Typography variant="body2" color="error">No shopId</Typography>
-            }
-            const name = shopNames[params.row.shopId]
-            if (name === undefined) {
-              return <Skeleton width={80} />
-            }
-            if (!name || name === '--') {
-              return <Typography variant="body2" color="error">Not found (ID: {params.row.shopId})</Typography>
-            }
-            return <Typography variant="body2">{name}</Typography>
+          if (params.row.role !== 'SHOPKEEPER' || !params.row.shopId || !params.row.shopName) {
+            return <Typography variant="body2">{params.row.role === 'SHOPKEEPER' ? params.row.shopName || '--' : '--'}</Typography>
           }
-          return <Typography variant="body2" color="text.secondary">--</Typography>
+
+          return (
+            <Button
+              size="small"
+              variant="text"
+              sx={{ justifyContent: 'flex-start', px: 0, minWidth: 0, textTransform: 'none' }}
+              onClick={() => setSelectedShopId(params.row.shopId || null)}
+            >
+              {params.row.shopName}
+            </Button>
+          )
         },
       },
       {
@@ -346,6 +374,64 @@ const UsersPage = () => {
         )}
       </Card>
 
+      <Dialog
+        open={Boolean(selectedShopId)}
+        onClose={() => {
+          setSelectedShopId(null)
+          setSelectedShop(null)
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Shop Details</DialogTitle>
+        <DialogContent dividers>
+          {isLoadingShopDetail || !selectedShop ? (
+            <Stack spacing={1} sx={{ pt: 1 }}>
+              <Skeleton variant="rounded" height={28} />
+              <Skeleton variant="rounded" height={28} />
+              <Skeleton variant="rounded" height={28} />
+              <Skeleton variant="rounded" height={90} />
+            </Stack>
+          ) : (
+            <Stack spacing={1.1} sx={{ pt: 1 }}>
+              <Typography variant="body2">Shop Name: {selectedShop.shopName || '--'}</Typography>
+              <Typography variant="body2">Shop ID: {selectedShop.id || '--'}</Typography>
+              <Typography variant="body2">Owner: {selectedShop.ownerName || '--'}</Typography>
+              <Typography variant="body2">Phone: {selectedShop.phone || '--'}</Typography>
+              <Typography variant="body2">Category: {selectedShop.categoryName || '--'}</Typography>
+              <Typography variant="body2">Slug: {selectedShop.slug || '--'}</Typography>
+              <Typography variant="body2">Status: {selectedShop.status || '--'}</Typography>
+              <Typography variant="body2">Address: {selectedShop.addressLine1 || '--'}</Typography>
+              <Typography variant="body2">Area: {selectedShop.area || '--'}</Typography>
+              <Typography variant="body2">Pincode: {selectedShop.pincode || '--'}</Typography>
+              <Typography variant="body2">Description: {selectedShop.description || '--'}</Typography>
+
+              <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 700 }}>
+                Revenue Summary
+              </Typography>
+              <Typography variant="body2">Total Orders: {Number(selectedShop.totalOrders || 0)}</Typography>
+              <Typography variant="body2">Total Revenue: {currency.format(Number(selectedShop.totalEarnings || 0))}</Typography>
+              <Typography variant="body2">
+                Commission: {selectedShop.commission !== undefined ? currency.format(Number(selectedShop.commission)) : '--'}
+              </Typography>
+              <Typography variant="body2">
+                Payable Amount: {selectedShop.payableAmount !== undefined ? currency.format(Number(selectedShop.payableAmount)) : '--'}
+              </Typography>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setSelectedShopId(null)
+              setSelectedShop(null)
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Drawer
         anchor="right"
         open={Boolean(selectedUserId)}
@@ -373,6 +459,7 @@ const UsersPage = () => {
             <Typography variant="body2">Email: {selectedUser.email || '--'}</Typography>
             <Typography variant="body2">Verified: {selectedUser.isVerified ? 'Yes' : 'No'}</Typography>
             <Typography variant="body2">Role: {selectedUser.role === 'SHOPKEEPER' ? 'Shopkeeper' : 'User'}</Typography>
+            <Typography variant="body2">Shop Name: {selectedUser.shopName || '--'}</Typography>
             <Typography variant="body2">City: {selectedUser.cityName || '--'}</Typography>
             <Typography variant="body2">Shopkeeper ID: {selectedUser.shopkeeperId || '--'}</Typography>
             <Typography variant="body2">Shop ID: {selectedUser.shopId || '--'}</Typography>

@@ -191,7 +191,8 @@ const OfferForm = ({
                 label={values.type === 'PERCENT' ? 'Percent Value' : 'Flat Value'}
                 type="number"
                 fullWidth
-                value={values.value}
+                placeholder={values.type === 'PERCENT' ? 'Enter percent' : 'Enter amount'}
+                value={values.value > 0 ? values.value : ''}
                 onChange={(event) => setValues((prev) => ({ ...prev, value: Number(event.target.value || 0) }))}
                 error={Boolean(errors.value)}
                 helperText={errors.value}

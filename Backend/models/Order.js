@@ -171,9 +171,15 @@ const recomputeShopOrderStats = async (shopId) => {
 
   const [countResult, earningsResult] = await Promise.all([
     mongoose.model('Order').countDocuments({ shopId }),
-    mongoose
-      .model('Order')
-      .aggregate([{ $match: { shopId: new mongoose.Types.ObjectId(String(shopId)) } }, { $group: { _id: null, total: { $sum: '$pricing.total' } } }]),
+    mongoose.model('Order').aggregate([
+      {
+        $match: {
+          shopId: new mongoose.Types.ObjectId(String(shopId)),
+          status: ORDER_STATUS.DELIVERED,
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$pricing.total' } } },
+    ]),
   ]);
 
   const totalEarnings = Number(earningsResult?.[0]?.total || 0);

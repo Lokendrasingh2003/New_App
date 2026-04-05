@@ -7,7 +7,7 @@ const User = require('../models/User');
 const ApiError = require('../utils/apiError');
 const { sendSuccess } = require('../utils/response');
 const { logAudit, buildActorFromRequest, buildMetadataFromRequest } = require('../utils/auditLogger');
-const { HTTP_STATUS, ERROR_CODES, SHOP_STATUS, AUDIT_EVENT_TYPES } = require('../config/constants');
+const { HTTP_STATUS, ERROR_CODES, SHOP_STATUS, ORDER_STATUS, AUDIT_EVENT_TYPES } = require('../config/constants');
 
 const toSlug = (value) =>
   String(value || '')
@@ -133,7 +133,7 @@ const listCities = async (req, res) => {
 const getCityBaseStats = async (cityId) => {
   const objectId = new mongoose.Types.ObjectId(String(cityId));
 
-  const [shopCount, userAgg, orderCount, revenueAgg] = await Promise.all([
+  const [shopCount, userAgg, orderCount, deliveredOrderCount, revenueAgg] = await Promise.all([
     Shop.countDocuments({ cityId: objectId, status: SHOP_STATUS.APPROVED, isActive: true }),
     User.aggregate([
       { $unwind: { path: '$addresses', preserveNullAndEmptyArrays: false } },
@@ -163,12 +163,16 @@ const getCityBaseStats = async (cityId) => {
       { $count: 'userCount' },
     ]),
     Order.countDocuments({ cityId: objectId }),
-    Order.aggregate([{ $match: { cityId: objectId } }, { $group: { _id: null, total: { $sum: '$pricing.total' } } }]),
+    Order.countDocuments({ cityId: objectId, status: ORDER_STATUS.DELIVERED }),
+    Order.aggregate([
+      { $match: { cityId: objectId, status: ORDER_STATUS.DELIVERED } },
+      { $group: { _id: null, total: { $sum: '$pricing.total' } } },
+    ]),
   ]);
 
   const userCount = Number(userAgg?.[0]?.userCount || 0);
   const totalRevenue = Number(Number(revenueAgg?.[0]?.total || 0).toFixed(2));
-  const averageOrderValue = orderCount > 0 ? Number((totalRevenue / orderCount).toFixed(2)) : 0;
+  const averageOrderValue = deliveredOrderCount > 0 ? Number((totalRevenue / deliveredOrderCount).toFixed(2)) : 0;
 
   return {
     shopCount,

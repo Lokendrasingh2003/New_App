@@ -1,5 +1,5 @@
 import api from '../../utils/axiosInstance'
-import type { Order, OrderDetail, OrderStatus, PaymentMode } from '../types/order'
+import type { Order, OrderDetail, OrderStatus, PaymentMode, OrderPaymentStatus } from '../types/order'
 
 type ApiEnvelope<T> = {
   success: boolean
@@ -10,9 +10,13 @@ type ApiEnvelope<T> = {
 type OrderListApiModel = {
   orderId: string
   customerName: string
+  customerPhone?: string
   total: number
+  paymentMode?: PaymentMode
+  paymentStatus?: OrderPaymentStatus | string
   status: OrderStatus
   date: string
+  itemsCount?: number
 }
 
 type OrderDetailApiModel = {
@@ -91,22 +95,68 @@ export type OrdersResponse = {
   }
 }
 
+type OrdersAnalyticsPayload = {
+  totalOrders?: number
+  totalEarnings?: number
+  averageOrderValue?: number
+  ordersByStatus?: Record<string, number>
+  ordersByDay?: Record<string, { orders?: number; earnings?: number }>
+}
+
+export type OrdersAnalyticsQuery = {
+  from: string
+  to: string
+  groupBy?: 'daily' | 'weekly'
+}
+
+export type OrderAnalytics = {
+  totalOrders: number
+  totalEarnings: number
+  averageOrderValue: number
+  ordersByStatus: Record<string, number>
+  ordersByDay: Record<string, { orders: number; earnings: number }>
+}
+
+const normalizeOrderStatus = (status?: string, paymentStatus?: string): OrderStatus => {
+  const normalizedStatus = String(status || 'NEW').toUpperCase()
+  const normalizedPaymentStatus = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalizedStatus === 'NEW' && normalizedPaymentStatus === 'FAILED') {
+    return 'CANCELLED'
+  }
+
+  if (
+    normalizedStatus === 'NEW' ||
+    normalizedStatus === 'ACCEPTED' ||
+    normalizedStatus === 'PREPARING' ||
+    normalizedStatus === 'READY' ||
+    normalizedStatus === 'DISPATCHED' ||
+    normalizedStatus === 'DELIVERED' ||
+    normalizedStatus === 'CANCELLED'
+  ) {
+    return normalizedStatus as OrderStatus
+  }
+
+  return 'NEW'
+}
+
 const mapListOrder = (order: OrderListApiModel): Order => ({
   id: String(order.orderId),
   shortId: String(order.orderId),
   customerName: String(order.customerName || 'Customer'),
-  customerPhone: '-',
+  customerPhone: String(order.customerPhone || '-'),
   total: Number(order.total || 0),
-  paymentMode: 'COD',
-  status: order.status,
+  paymentMode: (order.paymentMode as PaymentMode) || 'COD',
+  paymentStatus: (String(order.paymentStatus || 'PENDING').toUpperCase() as OrderPaymentStatus),
+  status: normalizeOrderStatus(order.status, String(order.paymentStatus || 'PENDING')),
   createdAt: String(order.date || new Date().toISOString()),
-  itemsCount: 0,
+  itemsCount: Number(order.itemsCount || 0),
 })
 
 const mapDetailOrder = (order: OrderDetailApiModel): OrderDetail => ({
   id: String(order.id || order._id || order.orderId),
   orderId: String(order.orderId),
-  status: order.status,
+  status: normalizeOrderStatus(order.status, order.payment?.status),
   statusHistory: (order.statusHistory || []).map((item) => ({
     status: item.status,
     timestamp: item.timestamp,
@@ -155,6 +205,28 @@ const ensureOrderDetail = (payload: OrderDetailPayload | undefined, fallbackMess
 
 const encodeOrderId = (orderId: string) => encodeURIComponent(orderId)
 
+const toOrderAnalytics = (payload: OrdersAnalyticsPayload | undefined): OrderAnalytics => {
+  if (!payload) {
+    throw new Error('Unable to load order analytics.')
+  }
+
+  return {
+    totalOrders: Number(payload.totalOrders || 0),
+    totalEarnings: Number(payload.totalEarnings || 0),
+    averageOrderValue: Number(payload.averageOrderValue || 0),
+    ordersByStatus: payload.ordersByStatus || {},
+    ordersByDay: Object.fromEntries(
+      Object.entries(payload.ordersByDay || {}).map(([key, value]) => [
+        key,
+        {
+          orders: Number(value?.orders || 0),
+          earnings: Number(value?.earnings || 0),
+        },
+      ]),
+    ),
+  }
+}
+
 export const getOrders = async (shopId: string, query: OrdersQuery = {}): Promise<OrdersResponse> => {
   const { data } = await api.get<ApiEnvelope<OrdersListPayload>>(`/api/shops/${shopId}/orders`, {
     params: query,
@@ -169,6 +241,17 @@ export const getOrders = async (shopId: string, query: OrdersQuery = {}): Promis
     orders: (payload.orders || []).map(mapListOrder),
     pagination: payload.pagination,
   }
+}
+
+export const getOrderAnalytics = async (
+  shopId: string,
+  query: OrdersAnalyticsQuery,
+): Promise<OrderAnalytics> => {
+  const { data } = await api.get<ApiEnvelope<OrdersAnalyticsPayload>>(`/api/shops/${shopId}/orders/analytics`, {
+    params: query,
+  })
+
+  return toOrderAnalytics(data?.data)
 }
 
 export const getOrder = async (shopId: string, orderId: string): Promise<OrderDetail> => {

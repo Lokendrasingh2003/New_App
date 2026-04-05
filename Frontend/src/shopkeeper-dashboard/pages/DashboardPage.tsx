@@ -1,4 +1,4 @@
-import { Alert, Box, Button, CircularProgress, Container, Grid, Skeleton, Stack, Typography, Avatar } from '@mui/material'
+import { Alert, Avatar, Box, Button, Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Grid, IconButton, Skeleton, Stack, Tooltip, Typography } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -12,13 +12,15 @@ import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined'
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import PageHeader from '../components/PageHeader'
 import StatCard from '../components/StatCard'
 import StatusChip from '../components/StatusChip'
 import { useShopkeeperStore } from '../shared/store/ShopkeeperStore'
 import { getShopkeeperShopId } from '../shared/auth/authStore'
+import { getOrder, getOrderAnalytics, getOrders, type OrderAnalytics } from '../services/orderService'
 import { getShopDashboard, getShopStats, getTodayStats, type ShopStatsSnapshot } from '../services/shopService'
-import type { OrderStatus } from '../types/order'
+import type { Order, OrderDetail, OrderStatus } from '../types/order'
 
 const ORDER_STATUS_OPTIONS: OrderStatus[] = [
   'NEW',
@@ -42,11 +44,78 @@ const EMPTY_STATS: ShopStatsSnapshot = {
   todayEarnings: 0,
 }
 
+const EMPTY_ANALYTICS: OrderAnalytics = {
+  totalOrders: 0,
+  totalEarnings: 0,
+  averageOrderValue: 0,
+  ordersByStatus: {},
+  ordersByDay: {},
+}
+
+const env = import.meta.env as Record<string, string | undefined>
+const backendOrigin = (env.VITE_API_BASE_URL || env.REACT_APP_API_BASE_URL || 'http://localhost:5000').replace(/\/api\/?$/i, '')
+
+const getOrderItemImageSrc = (imagePath?: string | null) => {
+  if (!imagePath) {
+    return ''
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(imagePath)) {
+    return imagePath
+  }
+
+  const normalizedPath = imagePath.replace(/\\/g, '/')
+  if (normalizedPath.startsWith('/')) {
+    return `${backendOrigin}${normalizedPath}`
+  }
+
+  return `${backendOrigin}/${normalizedPath}`
+}
+
+const formatPaymentModeLabel = (paymentMode?: string) => (paymentMode === 'COD' ? 'Cash on Delivery' : 'Online / UPI')
+const formatPaymentStatusLabel = (paymentStatus?: string) => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'Paid'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'Refunded'
+  }
+
+  return 'Unpaid'
+}
+
+const getPaymentStatusColor = (paymentStatus?: string): 'success' | 'warning' | 'error' | 'info' => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'success'
+  }
+
+  if (normalized === 'FAILED') {
+    return 'error'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'info'
+  }
+
+  return 'warning'
+}
+
 const DashboardPage = () => {
   const navigate = useNavigate()
   const shopId = getShopkeeperShopId()
-  const { orders, shop } = useShopkeeperStore()
+  const { orders: storeOrders, shop } = useShopkeeperStore()
   const [stats, setStats] = useState<ShopStatsSnapshot>(EMPTY_STATS)
+  const [analytics, setAnalytics] = useState<OrderAnalytics>(EMPTY_ANALYTICS)
+  const [recentOrders, setRecentOrders] = useState<Order[]>([])
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null)
+  const [viewOrderDetails, setViewOrderDetails] = useState<OrderDetail | null>(null)
+  const [isQuickViewLoading, setIsQuickViewLoading] = useState(false)
+  const [quickViewError, setQuickViewError] = useState('')
   const [isLoadingStats, setIsLoadingStats] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [statsError, setStatsError] = useState('')
@@ -67,20 +136,27 @@ const DashboardPage = () => {
 
       try {
         setStatsError('')
-        const [statsData, dashboardData, todayData] = await Promise.all([
+        const analyticsFrom = '2000-01-01T00:00:00.000Z'
+        const analyticsTo = new Date().toISOString()
+
+        const [statsData, dashboardData, todayData, analyticsData, recentOrdersResponse] = await Promise.all([
           getShopStats(shopId),
           getShopDashboard(shopId),
           getTodayStats(shopId),
+          getOrderAnalytics(shopId, { from: analyticsFrom, to: analyticsTo, groupBy: 'daily' }),
+          getOrders(shopId, { limit: 10, offset: 0, sort: 'recent' }),
         ])
 
         setStats({
           ...statsData,
-          totalOrders: Number(statsData.totalOrders || dashboardData.orderCount || 0),
-          totalEarnings: Number(statsData.totalEarnings || dashboardData.totalEarnings || 0),
-          totalProducts: Number(statsData.totalProducts || dashboardData.productCount || 0),
-          todayOrders: Number(todayData.todayOrders || statsData.todayOrders || 0),
-          todayEarnings: Number(todayData.todayEarnings || statsData.todayEarnings || 0),
+          totalOrders: Number(statsData.totalOrders ?? dashboardData.orderCount ?? 0),
+          totalEarnings: Number(statsData.totalEarnings ?? dashboardData.totalEarnings ?? 0),
+          totalProducts: Number(statsData.totalProducts ?? dashboardData.productCount ?? 0),
+          todayOrders: Number(todayData.todayOrders ?? statsData.todayOrders ?? 0),
+          todayEarnings: Number(todayData.todayEarnings ?? statsData.todayEarnings ?? 0),
         })
+        setAnalytics(analyticsData)
+        setRecentOrders(recentOrdersResponse.orders)
       } catch (error) {
         setStatsError(error instanceof Error ? error.message : 'Unable to load dashboard stats.')
       } finally {
@@ -107,11 +183,59 @@ const DashboardPage = () => {
     return () => window.clearInterval(timer)
   }, [fetchDashboardStats, shopId])
 
+  useEffect(() => {
+    if (!viewOrderId) {
+      setViewOrderDetails(null)
+      setQuickViewError('')
+      setIsQuickViewLoading(false)
+      return
+    }
+
+    if (!shopId) {
+      setViewOrderDetails(null)
+      setQuickViewError('Shop not found for current session.')
+      setIsQuickViewLoading(false)
+      return
+    }
+
+    let isCancelled = false
+
+    const loadQuickView = async () => {
+      try {
+        setIsQuickViewLoading(true)
+        setQuickViewError('')
+        const details = await getOrder(shopId, viewOrderId)
+
+        if (!isCancelled) {
+          setViewOrderDetails(details)
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setViewOrderDetails(null)
+          setQuickViewError(error instanceof Error ? error.message : 'Unable to load order snapshot.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsQuickViewLoading(false)
+        }
+      }
+    }
+
+    void loadQuickView()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [shopId, viewOrderId])
+
   const todayOrderCount = stats.todayOrders
   const todaySales = stats.todayEarnings
 
+  const getStatusCount = (status: OrderStatus) =>
+    Number(analytics.ordersByStatus[status] ?? storeOrders.filter((order) => order.status === status).length)
+
   const pendingStatuses: OrderStatus[] = ['NEW', 'ACCEPTED', 'PREPARING', 'READY']
-  const pendingOrderCount = orders.filter((order) => pendingStatuses.includes(order.status)).length
+  const pendingOrderCount = pendingStatuses.reduce((sum, status) => sum + getStatusCount(status), 0)
 
   // DataGrid columns
   const columns: GridColDef[] = [
@@ -157,7 +281,24 @@ const DashboardPage = () => {
       headerAlign: 'center',
       align: 'center',
       renderCell: (params: GridRenderCellParams) => (
-        <span style={{ fontSize: '0.85rem' }}>{params.value === 'COD' ? 'Cash' : 'Online'}</span>
+        <span style={{ fontSize: '0.85rem' }}>{formatPaymentModeLabel(String(params.value || ''))}</span>
+      ),
+    },
+    {
+      field: 'paymentStatus',
+      headerName: 'Paid Status',
+      flex: 0.9,
+      minWidth: 120,
+      sortable: false,
+      headerAlign: 'center',
+      align: 'center',
+      renderCell: (params: GridRenderCellParams) => (
+        <Chip
+          size="small"
+          label={formatPaymentStatusLabel(String(params.row.paymentStatus || 'PENDING'))}
+          color={getPaymentStatusColor(String(params.row.paymentStatus || 'PENDING'))}
+          variant="outlined"
+        />
       ),
     },
     {
@@ -187,38 +328,69 @@ const DashboardPage = () => {
     },
     {
       field: 'action',
-      headerName: 'Action',
-      flex: 0.6,
-      minWidth: 70,
+      headerName: 'Actions',
+      flex: 1,
+      minWidth: 130,
       sortable: false,
       headerAlign: 'center',
       align: 'center',
       renderCell: (params: GridRenderCellParams) => (
-        <Box
-          component="button"
-          onClick={() => navigate(`/shop/orders/${params.row.id}`)}
-          sx={{
-            background: 'none',
-            border: 'none',
-            color: 'primary.main',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: '0.875rem',
-            padding: 0,
-            '&:hover': {
-              textDecoration: 'underline',
-            },
-          }}
+        <Stack
+          direction="row"
+          spacing={0.5}
+          alignItems="center"
+          justifyContent="center"
+          sx={{ width: '100%' }}
         >
-          View
-        </Box>
+          <Tooltip title="Quick View">
+            <IconButton
+              size="small"
+              onClick={() => setViewOrderId(params.row.id)}
+              sx={{
+                border: '1px solid rgba(15,23,42,0.12)',
+                bgcolor: 'background.paper',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <VisibilityOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => navigate(`/shop/orders/${params.row.id}`)}
+            sx={{
+              minWidth: 0,
+              px: 0.75,
+              py: 0.25,
+              fontSize: '0.75rem',
+              textTransform: 'none',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Open Details
+          </Button>
+        </Stack>
       ),
     },
   ]
 
-  const recentOrdersData = orders.slice(0, 10).map((order) => ({
+  const recentOrdersData = (recentOrders.length > 0 ? recentOrders : storeOrders.slice(0, 10)).map((order) => ({
     ...order,
   }))
+
+  const viewOrder = viewOrderId ? recentOrdersData.find((order) => order.id === viewOrderId) : null
+  const quickViewCustomerName = viewOrderDetails?.customer?.name || viewOrder?.customerName || 'Customer'
+  const quickViewPhone = viewOrderDetails?.customer?.phone || viewOrder?.customerPhone || '-'
+  const quickViewItemCount = viewOrderDetails
+    ? viewOrderDetails.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    : Number(viewOrder?.itemsCount || 0)
+  const quickViewTotal = viewOrderDetails?.pricing?.total ?? viewOrder?.total ?? 0
+  const quickViewPaymentMode = viewOrderDetails?.payment?.mode || viewOrder?.paymentMode || 'COD'
+  const quickViewPaymentStatus = viewOrderDetails?.payment?.status || viewOrder?.paymentStatus || 'PENDING'
+  const quickViewStatus = viewOrderDetails?.status || viewOrder?.status || 'NEW'
+  const quickViewOrderId = viewOrderDetails?.orderId || viewOrder?.shortId || ''
 
   const salesTrend = useMemo(() => {
     const formatter = new Intl.DateTimeFormat('en-IN', { weekday: 'short' })
@@ -229,28 +401,15 @@ const DashboardPage = () => {
       date.setHours(0, 0, 0, 0)
       date.setDate(today.getDate() - (6 - index))
       const key = date.toISOString().slice(0, 10)
+      const dayStats = analytics.ordersByDay[key]
+
       return {
         key,
         label: formatter.format(date),
         date,
-        sales: 0,
-        orders: 0,
+        sales: Number(dayStats?.earnings || 0),
+        orders: Number(dayStats?.orders || 0),
       }
-    })
-
-    const dayMap = new Map(days.map((day) => [day.key, day]))
-
-    orders.forEach((order) => {
-      const orderDate = new Date(order.createdAt)
-      orderDate.setHours(0, 0, 0, 0)
-      const key = orderDate.toISOString().slice(0, 10)
-      const day = dayMap.get(key)
-      if (!day) {
-        return
-      }
-
-      day.sales += order.total
-      day.orders += 1
     })
 
     const peakSales = Math.max(...days.map((day) => day.sales), 1)
@@ -264,7 +423,7 @@ const DashboardPage = () => {
           : 8,
       orderSharePercent: Math.min(34, Math.max(16, (day.orders / peakOrders) * 30)),
     }))
-  }, [orders])
+  }, [analytics])
 
   const weeklySales = useMemo(() => salesTrend.reduce((sum, day) => sum + day.sales, 0), [salesTrend])
   const weeklyOrders = useMemo(() => salesTrend.reduce((sum, day) => sum + day.orders, 0), [salesTrend])
@@ -542,7 +701,7 @@ const DashboardPage = () => {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Live order stage distribution</Typography>
               <Stack spacing={1.2}>
                 {ORDER_STATUS_OPTIONS.map((status) => {
-                  const count = orders.filter((item) => item.status === status).length
+                  const count = getStatusCount(status)
                   return (
                     <Stack key={status} direction="row" justifyContent="space-between" alignItems="center">
                       <StatusChip status={status} />
@@ -582,14 +741,165 @@ const DashboardPage = () => {
               autoHeight
               rows={recentOrdersData}
               columns={columns}
+              rowHeight={60}
               pageSizeOptions={[10, 25]}
               initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 } } }}
               disableRowSelectionOnClick
               density="compact"
-              sx={{ border: 'none', minWidth: 960 }}
+              sx={{
+                border: 'none',
+                minWidth: 960,
+                '& .MuiDataGrid-cell': {
+                  alignItems: 'center',
+                },
+              }}
             />
           </Box>
         </Box>
+
+        <Dialog open={Boolean(viewOrderId)} onClose={() => setViewOrderId(null)} fullWidth maxWidth="sm">
+          <DialogTitle>Order Snapshot</DialogTitle>
+          <DialogContent>
+            {isQuickViewLoading ? (
+              <Stack spacing={1.25} alignItems="center" sx={{ py: 2 }}>
+                <CircularProgress size={24} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading quick view...
+                </Typography>
+              </Stack>
+            ) : null}
+
+            {quickViewError ? <Alert severity="error" sx={{ mb: 1.5 }}>{quickViewError}</Alert> : null}
+
+            {viewOrderId && !isQuickViewLoading && (
+              <Stack spacing={1.25}>
+                <Typography variant="body2">
+                  <strong>Order ID:</strong> {quickViewOrderId || '-'}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Customer:</strong> {quickViewCustomerName}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Phone:</strong> {quickViewPhone}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Total Qty:</strong> {quickViewItemCount}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Total:</strong> ₹{quickViewTotal}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Payment:</strong> {formatPaymentModeLabel(quickViewPaymentMode)}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="body2">
+                    <strong>Paid Status:</strong>
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label={formatPaymentStatusLabel(quickViewPaymentStatus)}
+                    color={getPaymentStatusColor(quickViewPaymentStatus)}
+                    variant="outlined"
+                  />
+                </Box>
+                <Typography variant="body2">
+                  <strong>Status:</strong> {quickViewStatus}
+                </Typography>
+
+                {viewOrderDetails?.items?.length ? (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Ordered Items
+                    </Typography>
+                    <Stack spacing={1}>
+                      {viewOrderDetails.items.map((item) => {
+                        const itemImage = getOrderItemImageSrc(item.image)
+
+                        return (
+                          <Box
+                            key={`${item.productId}-${item.variantId || item.variantLabel}`}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 1,
+                              p: 1,
+                              border: '1px solid rgba(15,23,42,0.08)',
+                              borderRadius: 1.5,
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}>
+                              {itemImage ? (
+                                <Box
+                                  component="img"
+                                  src={itemImage}
+                                  alt={item.productName}
+                                  sx={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 1.5,
+                                    objectFit: 'cover',
+                                    border: '1px solid rgba(15,23,42,0.08)',
+                                    bgcolor: 'grey.100',
+                                    flexShrink: 0,
+                                  }}
+                                />
+                              ) : (
+                                <Box
+                                  sx={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 1.5,
+                                    border: '1px solid rgba(15,23,42,0.08)',
+                                    bgcolor: 'grey.100',
+                                    color: 'text.secondary',
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    fontSize: 10,
+                                    textAlign: 'center',
+                                    px: 0.5,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  No Image
+                                </Box>
+                              )}
+
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {item.productName}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {item.variantLabel} • Qty {item.quantity}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              ₹{item.price * item.quantity}
+                            </Typography>
+                          </Box>
+                        )
+                      })}
+                    </Stack>
+                  </Box>
+                ) : null}
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setViewOrderId(null)}>Close</Button>
+            {viewOrder && (
+              <Button
+                onClick={() => {
+                  navigate(`/shop/orders/${encodeURIComponent(viewOrder.id)}`)
+                  setViewOrderId(null)
+                }}
+              >
+                Open Details
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
       </Stack>
     </Container>
   )

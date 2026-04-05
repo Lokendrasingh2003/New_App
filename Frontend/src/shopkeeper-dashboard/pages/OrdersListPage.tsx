@@ -5,6 +5,8 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
+  CircularProgress,
   Container,
   Dialog,
   DialogActions,
@@ -34,11 +36,12 @@ import { getShopkeeperShopId } from '../shared/auth/authStore'
 import { useAppFeedback } from '../shared/ui/AppFeedbackProvider'
 import {
   acceptOrder,
+  getOrder,
   getOrders,
   rejectOrder,
   updateOrderStatus as updateOrderStatusApi,
 } from '../services/orderService'
-import type { Order, OrderStatus } from '../types/order'
+import type { Order, OrderDetail, OrderStatus } from '../types/order'
 
 type StatusFilter = 'ALL' | OrderStatus
 const ORDER_STATUS_OPTIONS: OrderStatus[] = [
@@ -50,6 +53,77 @@ const ORDER_STATUS_OPTIONS: OrderStatus[] = [
   'DELIVERED',
   'CANCELLED',
 ]
+
+const env = import.meta.env as Record<string, string | undefined>
+const backendOrigin = (env.VITE_API_BASE_URL || env.REACT_APP_API_BASE_URL || 'http://localhost:5000').replace(/\/api\/?$/i, '')
+
+const getOrderItemImageSrc = (imagePath?: string | null) => {
+  if (!imagePath) {
+    return ''
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(imagePath)) {
+    return imagePath
+  }
+
+  const normalizedPath = imagePath.replace(/\\/g, '/')
+  if (normalizedPath.startsWith('/')) {
+    return `${backendOrigin}${normalizedPath}`
+  }
+
+  return `${backendOrigin}/${normalizedPath}`
+}
+
+const formatPaymentModeLabel = (paymentMode?: string) => (paymentMode === 'COD' ? 'Cash on Delivery' : 'Online / UPI')
+const formatPaymentStatusLabel = (paymentStatus?: string) => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'Paid'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'Refunded'
+  }
+
+  return 'Unpaid'
+}
+
+const formatPaymentStatusColor = (paymentStatus?: string): 'success' | 'warning' | 'error' | 'info' => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'success'
+  }
+
+  if (normalized === 'FAILED') {
+    return 'error'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'info'
+  }
+
+  return 'warning'
+}
+
+const getPaymentStatusColor = (paymentStatus?: string): 'success' | 'warning' | 'error' | 'info' => {
+  const normalized = String(paymentStatus || 'PENDING').toUpperCase()
+
+  if (normalized === 'SUCCESS') {
+    return 'success'
+  }
+
+  if (normalized === 'FAILED') {
+    return 'error'
+  }
+
+  if (normalized === 'REFUNDED') {
+    return 'info'
+  }
+
+  return 'warning'
+}
 
 const OrdersListPage = () => {
   const navigate = useNavigate()
@@ -67,6 +141,9 @@ const OrdersListPage = () => {
   const [actionOrderId, setActionOrderId] = useState<string | null>(null)
   const [confirmCancel, setConfirmCancel] = useState<{ id: string; shortId: string; reason: string } | null>(null)
   const [viewOrderId, setViewOrderId] = useState<string | null>(null)
+  const [viewOrderDetails, setViewOrderDetails] = useState<OrderDetail | null>(null)
+  const [isQuickViewLoading, setIsQuickViewLoading] = useState(false)
+  const [quickViewError, setQuickViewError] = useState('')
 
   useEffect(() => {
     if (!shopId) {
@@ -126,6 +203,51 @@ const OrdersListPage = () => {
   useEffect(() => {
     setPaginationModel((prev) => ({ ...prev, page: 0 }))
   }, [searchQuery, statusFilter])
+
+  useEffect(() => {
+    if (!viewOrderId) {
+      setViewOrderDetails(null)
+      setQuickViewError('')
+      setIsQuickViewLoading(false)
+      return
+    }
+
+    if (!shopId) {
+      setViewOrderDetails(null)
+      setQuickViewError('Shop not found for current session.')
+      setIsQuickViewLoading(false)
+      return
+    }
+
+    let isCancelled = false
+
+    const loadQuickView = async () => {
+      try {
+        setIsQuickViewLoading(true)
+        setQuickViewError('')
+        const details = await getOrder(shopId, viewOrderId)
+
+        if (!isCancelled) {
+          setViewOrderDetails(details)
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setViewOrderDetails(null)
+          setQuickViewError(error instanceof Error ? error.message : 'Unable to load order snapshot.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsQuickViewLoading(false)
+        }
+      }
+    }
+
+    void loadQuickView()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [shopId, viewOrderId])
 
   const handleUpdateStatus = async (orderId: string, nextStatus: OrderStatus) => {
     if (!shopId) {
@@ -188,10 +310,27 @@ const OrdersListPage = () => {
     {
       field: 'paymentMode',
       headerName: 'Payment',
-      flex: 0.7,
-      minWidth: 90,
+      flex: 0.9,
+      minWidth: 130,
       align: 'center',
       headerAlign: 'center',
+      renderCell: (params: GridRenderCellParams) => formatPaymentModeLabel(String(params.row.paymentMode || '')),
+    },
+    {
+      field: 'paymentStatus',
+      headerName: 'Paid Status',
+      flex: 0.85,
+      minWidth: 120,
+      align: 'center',
+      headerAlign: 'center',
+      renderCell: (params: GridRenderCellParams) => (
+        <Chip
+          size="small"
+          label={formatPaymentStatusLabel(String(params.row.paymentStatus || 'PENDING'))}
+          color={getPaymentStatusColor(String(params.row.paymentStatus || 'PENDING'))}
+          variant="outlined"
+        />
+      ),
     },
     {
       field: 'status',
@@ -289,6 +428,16 @@ const OrdersListPage = () => {
   ]
 
   const viewOrder = viewOrderId ? orders.find((order) => order.id === viewOrderId) : null
+  const quickViewCustomerName = viewOrderDetails?.customer?.name || viewOrder?.customerName || 'Customer'
+  const quickViewPhone = viewOrderDetails?.customer?.phone || viewOrder?.customerPhone || '-'
+  const quickViewItemCount = viewOrderDetails
+    ? viewOrderDetails.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    : Number(viewOrder?.itemsCount || 0)
+  const quickViewTotal = viewOrderDetails?.pricing?.total ?? viewOrder?.total ?? 0
+  const quickViewPaymentMode = viewOrderDetails?.payment?.mode || viewOrder?.paymentMode || 'COD'
+  const quickViewPaymentStatus = viewOrderDetails?.payment?.status || viewOrder?.paymentStatus || 'PENDING'
+  const quickViewStatus = viewOrderDetails?.status || viewOrder?.status || 'NEW'
+  const quickViewOrderId = viewOrderDetails?.orderId || viewOrder?.shortId || ''
   const activeOrdersCount = orders.filter((order) => order.status !== 'DELIVERED' && order.status !== 'CANCELLED').length
   const codOrdersCount = orders.filter((order) => order.paymentMode === 'COD').length
 
@@ -499,33 +648,133 @@ const OrdersListPage = () => {
         }}
       />
 
-      <Dialog open={Boolean(viewOrder)} onClose={() => setViewOrderId(null)} fullWidth maxWidth="sm">
+      <Dialog open={Boolean(viewOrderId)} onClose={() => setViewOrderId(null)} fullWidth maxWidth="sm">
         <DialogTitle>Order Snapshot</DialogTitle>
         <DialogContent>
-          {viewOrder && (
-            <Box sx={{ display: 'grid', gap: 1 }}>
+          {isQuickViewLoading ? (
+            <Stack spacing={1.25} alignItems="center" sx={{ py: 2 }}>
+              <CircularProgress size={24} />
+              <Typography variant="body2" color="text.secondary">
+                Loading quick view...
+              </Typography>
+            </Stack>
+          ) : null}
+
+          {quickViewError ? <Alert severity="error" sx={{ mb: 1.5 }}>{quickViewError}</Alert> : null}
+
+          {viewOrderId && !isQuickViewLoading && (
+            <Stack spacing={1.25}>
               <Typography variant="body2">
-                <strong>Order ID:</strong> {viewOrder.shortId}
+                <strong>Order ID:</strong> {quickViewOrderId || '-'}
               </Typography>
               <Typography variant="body2">
-                <strong>Customer:</strong> {viewOrder.customerName}
+                <strong>Customer:</strong> {quickViewCustomerName}
               </Typography>
               <Typography variant="body2">
-                <strong>Phone:</strong> {viewOrder.customerPhone}
+                <strong>Phone:</strong> {quickViewPhone}
               </Typography>
               <Typography variant="body2">
-                <strong>Items:</strong> {viewOrder.itemsCount}
+                <strong>Total Qty:</strong> {quickViewItemCount}
               </Typography>
               <Typography variant="body2">
-                <strong>Total:</strong> ₹{viewOrder.total}
+                <strong>Total:</strong> ₹{quickViewTotal}
               </Typography>
               <Typography variant="body2">
-                <strong>Payment:</strong> {viewOrder.paymentMode}
+                <strong>Payment:</strong> {formatPaymentModeLabel(quickViewPaymentMode)}
               </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2">
+                  <strong>Paid Status:</strong>
+                </Typography>
+                <Chip
+                  size="small"
+                  label={formatPaymentStatusLabel(quickViewPaymentStatus)}
+                  color={formatPaymentStatusColor(quickViewPaymentStatus)}
+                  variant="outlined"
+                />
+              </Box>
               <Typography variant="body2">
-                <strong>Status:</strong> {viewOrder.status}
+                <strong>Status:</strong> {quickViewStatus}
               </Typography>
-            </Box>
+
+              {viewOrderDetails?.items?.length ? (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Ordered Items
+                  </Typography>
+                  <Stack spacing={1}>
+                    {viewOrderDetails.items.map((item) => {
+                      const itemImage = getOrderItemImageSrc(item.image)
+
+                      return (
+                        <Box
+                          key={`${item.productId}-${item.variantId || item.variantLabel}`}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 1,
+                            p: 1,
+                            border: '1px solid rgba(15,23,42,0.08)',
+                            borderRadius: 1.5,
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}>
+                            {itemImage ? (
+                              <Box
+                                component="img"
+                                src={itemImage}
+                                alt={item.productName}
+                                sx={{
+                                  width: 48,
+                                  height: 48,
+                                  borderRadius: 1.5,
+                                  objectFit: 'cover',
+                                  border: '1px solid rgba(15,23,42,0.08)',
+                                  bgcolor: 'grey.100',
+                                  flexShrink: 0,
+                                }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: 48,
+                                  height: 48,
+                                  borderRadius: 1.5,
+                                  border: '1px solid rgba(15,23,42,0.08)',
+                                  bgcolor: 'grey.100',
+                                  color: 'text.secondary',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  fontSize: 10,
+                                  textAlign: 'center',
+                                  px: 0.5,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                No Image
+                              </Box>
+                            )}
+
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {item.productName}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {item.variantLabel} • Qty {item.quantity}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            ₹{item.price * item.quantity}
+                          </Typography>
+                        </Box>
+                      )
+                    })}
+                  </Stack>
+                </Box>
+              ) : null}
+            </Stack>
           )}
         </DialogContent>
         <DialogActions>

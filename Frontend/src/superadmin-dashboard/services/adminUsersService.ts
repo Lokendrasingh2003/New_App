@@ -15,6 +15,7 @@ type BackendUser = {
   role?: 'USER' | 'SHOPKEEPER'
   shopkeeperId?: string | null
   shopId?: string | null
+  shopName?: string | null
   name: string | null
   email: string | null
   cityId: string | null
@@ -109,6 +110,7 @@ const toFrontendUser = (user: BackendUser): AdminUser => ({
   role: user.role === 'SHOPKEEPER' ? 'SHOPKEEPER' : 'USER',
   shopkeeperId: user.shopkeeperId || null,
   shopId: user.shopId || null,
+  shopName: user.shopName || null,
   createdAt: String(user.createdAt || new Date().toISOString()),
   updatedAt: String(user.updatedAt || new Date().toISOString()),
 })

@@ -308,12 +308,25 @@ const listShops = async (req, res) => {
 const getShopByIdForAdmin = async (req, res) => {
   const { shop, owner, userOwner, city } = await loadShopWithOwner(req.params.shopId);
 
-  const [totalOrders, productCount] = await Promise.all([
+  const earningsFilter = {
+    shopId: shop._id,
+    status: ORDER_STATUS.DELIVERED,
+  };
+
+  const [totalOrders, productCount, earningsAgg] = await Promise.all([
     Order.countDocuments({ shopId: shop._id }),
     Product.countDocuments({ shopId: shop._id, isDeleted: false }),
+    Order.aggregate([
+      { $match: earningsFilter },
+      { $group: { _id: null, totalEarnings: { $sum: '$pricing.total' } } },
+    ]),
   ]);
 
   const activeSubscriptions = shop.subscription?.isActive ? 1 : 0;
+  const totalEarnings = Number(Number(earningsAgg?.[0]?.totalEarnings ?? shop.stats?.totalEarnings ?? 0).toFixed(2));
+  const commissionRate = Number(owner?.commissionPreference?.percentage || 3);
+  const commission = Number(((totalEarnings * commissionRate) / 100).toFixed(2));
+  const payableAmount = Number((totalEarnings - commission).toFixed(2));
 
   return sendSuccess(res, {
     statusCode: HTTP_STATUS.OK,
@@ -345,7 +358,9 @@ const getShopByIdForAdmin = async (req, res) => {
       },
       stats: {
         totalOrders,
-        earnings: Number(shop.stats?.totalEarnings || 0),
+        earnings: totalEarnings,
+        commission,
+        payableAmount,
         rating: Number(shop.stats?.rating || 0),
         productsCount: productCount,
         activeSubscriptions,
@@ -635,13 +650,10 @@ const getShopEarnings = async (req, res) => {
   }
 
   const owner = await Shopkeeper.findById(shop.ownerId).lean();
-  if (!owner) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, 'Shop owner not found.', ERROR_CODES.SHOPKEEPER_NOT_FOUND);
-  }
 
   const filter = {
     shopId: shop._id,
-    status: { $ne: ORDER_STATUS.CANCELLED },
+    status: ORDER_STATUS.DELIVERED,
   };
 
   if (req.query.from || req.query.to) {

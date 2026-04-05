@@ -132,7 +132,7 @@ const orderSchemas = {
   create: Joi.object({
     cartId: objectId.required(),
     addressId: Joi.string().trim().min(6).max(60).required(),
-    paymentMode: Joi.string().valid('COD', 'ONLINE').required(),
+    paymentMode: Joi.string().valid('COD', 'ONLINE', 'UPI', 'CARD', 'NETBANKING', 'WALLET').required(),
     couponCode: Joi.string().trim().uppercase().pattern(/^[A-Z0-9]{4,20}$/).optional(),
     specialInstructions: Joi.string().trim().max(500).allow('', null),
   }),
@@ -684,8 +684,8 @@ const adminOrderSchemas = {
     reason: Joi.string().trim().min(3).max(500).required(),
   }),
   orderStatsQuery: Joi.object({
-    dateFrom: Joi.date().required(),
-    dateTo: Joi.date().required(),
+    dateFrom: Joi.date().optional(),
+    dateTo: Joi.date().optional(),
     groupBy: Joi.string().valid('daily', 'hourly').optional(),
   }),
 };

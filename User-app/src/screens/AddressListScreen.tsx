@@ -60,7 +60,7 @@ export function AddressListScreen() {
             <View style={styles.addFirstButtonWrap}>
               <AppButton
                 title="Add New Address"
-                onPress={() => navigation.navigate('AddEditAddress')}
+                onPress={() => navigation.navigate('AddEditAddress', { returnTo: 'checkout' })}
               />
             </View>
           </View>
@@ -86,7 +86,7 @@ export function AddressListScreen() {
                 <View style={styles.actionsRow}>
                   <Pressable
                     style={styles.actionPill}
-                    onPress={() => navigation.navigate('AddEditAddress', { addressId: address.id })}
+                    onPress={() => navigation.navigate('AddEditAddress', { addressId: address.id, returnTo: 'checkout' })}
                   >
                     <AppText style={styles.actionText}>Edit</AppText>
                   </Pressable>
@@ -112,7 +112,13 @@ export function AddressListScreen() {
 
             <AppButton
               title="Add New Address"
-              onPress={() => navigation.navigate('AddEditAddress')}
+              onPress={() => navigation.navigate('AddEditAddress', { returnTo: 'checkout' })}
+            />
+
+            <AppButton
+              title="Proceed to Checkout"
+              style={{ marginTop: 10 }}
+              onPress={() => navigation.navigate('Checkout')}
             />
           </>
         )}

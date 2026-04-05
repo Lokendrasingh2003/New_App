@@ -19,6 +19,7 @@ import {
 } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import DataGridContainer from '../modules/cities/DataGridContainer'
 import { useSuperAdminStore } from '../store/SuperAdminStore'
 import type { Shop, ShopStatus } from '../types/shop'
@@ -59,6 +60,12 @@ const statusColorMap: Record<ShopStatus, 'warning' | 'success' | 'error' | 'defa
 
 const formatDateTime = (value: string) => new Date(value).toLocaleString()
 
+const currency = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+})
+
 const sanitizeSlug = (value: string) => {
   return value
     .toLowerCase()
@@ -70,6 +77,7 @@ const sanitizeSlug = (value: string) => {
 }
 
 const ShopsPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     shops,
     cities,
@@ -101,6 +109,7 @@ const ShopsPage = () => {
   const [slugTarget, setSlugTarget] = useState<Shop | null>(null)
   const [slugInput, setSlugInput] = useState('')
   const isInitialLoading = useInitialLoadingDelay()
+  const requestedShopId = searchParams.get('shopId')?.trim() || ''
 
   useEffect(() => {
     let mounted = true
@@ -119,6 +128,25 @@ const ShopsPage = () => {
     }
   }, [showError, syncShops])
 
+  useEffect(() => {
+    if (!requestedShopId) {
+      return
+    }
+
+    setSearch((current) => (current === requestedShopId ? current : requestedShopId))
+  }, [requestedShopId])
+
+  useEffect(() => {
+    if (!requestedShopId || shops.length === 0) {
+      return
+    }
+
+    const match = shops.find((shop) => shop.id === requestedShopId)
+    if (match) {
+      setSelectedShopId(match.id)
+    }
+  }, [requestedShopId, shops])
+
   const selectedShop = useMemo(
     () => (selectedShopId ? shops.find((shop) => shop.id === selectedShopId) ?? null : null),
     [selectedShopId, shops],
@@ -129,9 +157,19 @@ const ShopsPage = () => {
   }, [cities])
 
   const categoryOptions = useMemo(() => {
-    const values = new Set(categories.map((category) => category.name))
-    shops.forEach((shop) => values.add(shop.categoryName))
-    return Array.from(values).sort((a, b) => a.localeCompare(b))
+    const shopCategorySet = new Set(
+      shops
+        .map((shop) => String(shop.categoryName || '').trim().toLowerCase())
+        .filter((category) => category.length > 0),
+    )
+
+    return Array.from(
+      new Set(
+        categories
+          .map((category) => String(category.name || '').trim())
+          .filter((category) => category.length > 0 && shopCategorySet.has(category.toLowerCase())),
+      ),
+    ).sort((a, b) => a.localeCompare(b))
   }, [categories, shops])
 
   const filteredShops = useMemo(() => {
@@ -145,6 +183,7 @@ const ShopsPage = () => {
       const searchMatch =
         !searchValue ||
         shop.shopName.toLowerCase().includes(searchValue) ||
+        shop.id.toLowerCase().includes(searchValue) ||
         shop.ownerName.toLowerCase().includes(searchValue) ||
         shop.phone.toLowerCase().includes(searchValue) ||
         shop.slug.toLowerCase().includes(searchValue)
@@ -202,6 +241,10 @@ const ShopsPage = () => {
       slug: shop.slug,
       status: shop.status,
       isPublic: shop.isPublic,
+      totalOrders: Number(shop.totalOrders || 0),
+      totalRevenue: Number(shop.totalEarnings || 0),
+      commission: shop.commission ?? '',
+      payableAmount: shop.payableAmount ?? '',
       createdAt: shop.createdAt,
       updatedAt: shop.updatedAt,
       rejectReason: shop.rejectReason ?? '',
@@ -259,6 +302,15 @@ const ShopsPage = () => {
         ),
       },
       {
+        field: 'id',
+        headerName: 'Shop ID',
+        minWidth: 220,
+        flex: 1,
+        renderCell: (params: GridRenderCellParams<Shop>) => (
+          <Typography variant="body2">{params.row.id}</Typography>
+        ),
+      },
+      {
         field: 'ownerName',
         headerName: 'Owner',
         minWidth: 220,
@@ -301,6 +353,47 @@ const ShopsPage = () => {
             color={statusColorMap[params.value ?? 'pending_approval']}
             variant="filled"
           />
+        ),
+      },
+      {
+        field: 'totalOrders',
+        headerName: 'Orders',
+        minWidth: 110,
+        flex: 0.6,
+        valueGetter: (_value, row) => Number(row.totalOrders || 0),
+      },
+      {
+        field: 'totalEarnings',
+        headerName: 'Total Revenue',
+        minWidth: 160,
+        flex: 0.9,
+        valueGetter: (_value, row) => Number(row.totalEarnings || 0),
+        renderCell: (params: GridRenderCellParams<Shop, number>) => (
+          <Typography variant="body2">{currency.format(Number(params.value || 0))}</Typography>
+        ),
+      },
+      {
+        field: 'commission',
+        headerName: 'Commission',
+        minWidth: 150,
+        flex: 0.85,
+        valueGetter: (_value, row) => row.commission,
+        renderCell: (params: GridRenderCellParams<Shop, number | undefined>) => (
+          <Typography variant="body2">
+            {params.value !== undefined ? currency.format(Number(params.value)) : '--'}
+          </Typography>
+        ),
+      },
+      {
+        field: 'payableAmount',
+        headerName: 'Payable Amount',
+        minWidth: 170,
+        flex: 0.95,
+        valueGetter: (_value, row) => row.payableAmount,
+        renderCell: (params: GridRenderCellParams<Shop, number | undefined>) => (
+          <Typography variant="body2">
+            {params.value !== undefined ? currency.format(Number(params.value)) : '--'}
+          </Typography>
         ),
       },
       {
@@ -440,7 +533,7 @@ const ShopsPage = () => {
 
             <TextField
               label="Search"
-              placeholder="shop / owner / phone / slug"
+              placeholder="shop / shop id / owner / phone / slug"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               fullWidth
@@ -482,7 +575,18 @@ const ShopsPage = () => {
         )}
       </Card>
 
-      <Drawer anchor="right" open={Boolean(selectedShopId)} onClose={() => setSelectedShopId(null)}>
+      <Drawer
+        anchor="right"
+        open={Boolean(selectedShopId)}
+        onClose={() => {
+          setSelectedShopId(null)
+          if (requestedShopId) {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('shopId')
+            setSearchParams(nextParams, { replace: true })
+          }
+        }}
+      >
         <Box sx={{ width: { xs: 320, sm: 420 }, p: 2.5 }}>
           {selectedShop ? (
             <Stack spacing={1.75}>
@@ -495,11 +599,22 @@ const ShopsPage = () => {
               </Stack>
 
               <Typography variant="body2" color="text.secondary">
+                Shop ID: {selectedShop.id}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
                 Slug: {selectedShop.slug}
               </Typography>
               <Typography variant="body2">Owner: {selectedShop.ownerName}</Typography>
               <Typography variant="body2">Phone: {selectedShop.phone}</Typography>
               <Typography variant="body2">Description: {selectedShop.description || '--'}</Typography>
+              <Typography variant="body2">Total Orders: {Number(selectedShop.totalOrders || 0)}</Typography>
+              <Typography variant="body2">Total Revenue: {currency.format(Number(selectedShop.totalEarnings || 0))}</Typography>
+              <Typography variant="body2">
+                Commission: {selectedShop.commission !== undefined ? currency.format(Number(selectedShop.commission)) : '--'}
+              </Typography>
+              <Typography variant="body2">
+                Payable Amount: {selectedShop.payableAmount !== undefined ? currency.format(Number(selectedShop.payableAmount)) : '--'}
+              </Typography>
               <Typography variant="body2">City: {cityNameById.get(selectedShop.cityId) ?? 'Unknown city'}</Typography>
               <Typography variant="body2">Category: {selectedShop.categoryName || 'Unknown category'}</Typography>
               <Typography variant="body2">Address: {selectedShop.addressLine1 || '--'}</Typography>

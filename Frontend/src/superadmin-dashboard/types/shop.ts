@@ -10,6 +10,10 @@ export type Shop = {
   slug: string
   status: ShopStatus
   isPublic: boolean
+  totalOrders?: number
+  totalEarnings?: number
+  commission?: number
+  payableAmount?: number
   rejectReason?: string
   description?: string
   addressLine1?: string

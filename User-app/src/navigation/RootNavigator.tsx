@@ -2,6 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { CartTabBarIcon } from '../components/ui/CartTabBarIcon';
 import { useEffect, useState } from 'react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -114,14 +115,15 @@ function MainTabNavigator() {
         tabBarActiveTintColor: '#22A55D',
         tabBarInactiveTintColor: '#6B7280',
         tabBarIcon: ({ color, size, focused }) => {
+          if (route.name === 'Cart') {
+            return <CartTabBarIcon color={color} size={size} focused={focused} />;
+          }
           const iconNameByRoute: Record<keyof MainTabParamList, keyof typeof Ionicons.glyphMap> = {
             Home: focused ? 'home' : 'home-outline',
             Search: focused ? 'search' : 'search-outline',
-            Cart: focused ? 'cart' : 'cart-outline',
             Orders: focused ? 'receipt' : 'receipt-outline',
             Profile: focused ? 'person' : 'person-outline',
           };
-
           const iconName = iconNameByRoute[route.name as keyof MainTabParamList] ?? 'ellipse';
           return <Ionicons name={iconName} size={size} color={color} />;
         },

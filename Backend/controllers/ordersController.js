@@ -173,7 +173,17 @@ const createOrder = async (req, res) => {
 
     const orderId = await generateOrderId('U');
     const now = new Date();
-    const normalizedPaymentMode = String(paymentMode || ORDER_PAYMENT_MODES.COD).toUpperCase();
+    const normalizedPaymentMode = String(paymentMode || ORDER_PAYMENT_MODES.COD).trim().toUpperCase();
+    const onlinePaymentModes = new Set([
+      ORDER_PAYMENT_MODES.ONLINE,
+      'UPI',
+      'CARD',
+      'NETBANKING',
+      'WALLET',
+    ]);
+    const resolvedPaymentMode = onlinePaymentModes.has(normalizedPaymentMode)
+      ? ORDER_PAYMENT_MODES.ONLINE
+      : ORDER_PAYMENT_MODES.COD;
 
     const order = await Order.create({
       orderId,
@@ -214,10 +224,7 @@ const createOrder = async (req, res) => {
       },
       offerStatsApplied: false,
       payment: {
-        mode:
-          normalizedPaymentMode === ORDER_PAYMENT_MODES.ONLINE
-            ? ORDER_PAYMENT_MODES.ONLINE
-            : ORDER_PAYMENT_MODES.COD,
+        mode: resolvedPaymentMode,
         status: ORDER_PAYMENT_STATUS.PENDING,
         transactionId: null,
         failureReason: null,

@@ -45,13 +45,20 @@ export function InvoiceScreen() {
     );
   }, [order]);
 
-  if (!order) {
+  if (!order || order.status !== 'delivered') {
     return (
       <Screen>
         <AppHeader />
         <SectionHeader title="Invoice" />
         <View style={styles.emptyWrap}>
-          <EmptyState title="Invoice not found" description="This invoice is not available." />
+          <EmptyState
+            title="Invoice not available"
+            description={
+              !order
+                ? 'This invoice is not available.'
+                : 'Invoice will be available after the order is delivered.'
+            }
+          />
         </View>
       </Screen>
     );
@@ -235,7 +242,9 @@ export function InvoiceScreen() {
           </View>
         </View>
 
-        <AppButton title="Download / Share Invoice" onPress={handleDownloadShare} />
+        {order.status === 'delivered' && (
+          <AppButton title="Download / Share Invoice" onPress={handleDownloadShare} />
+        )}
       </ScrollView>
     </Screen>
   );

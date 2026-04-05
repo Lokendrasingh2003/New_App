@@ -114,6 +114,7 @@ const ProductCreatePage = () => {
         label: '',
         price: 0,
         mrp: 0,
+        stockQty: 0,
         inStock: true,
       },
     ],
@@ -136,10 +137,9 @@ const ProductCreatePage = () => {
       throw new Error('Category not resolved yet. Please try again.')
     }
 
-    const variants = values.variants.map((variant, index) => {
-      const fallbackQty = index === 0 ? Number(values.stockQty || 0) : 0
-      const stockQty = Math.max(0, Number(variant.stockQty ?? fallbackQty))
-      const inStock = Boolean(values.inStock && variant.inStock && stockQty > 0)
+    const variants = values.variants.map((variant) => {
+      const stockQty = Math.max(0, Number(variant.stockQty || 0))
+      const inStock = Boolean(variant.inStock && stockQty > 0)
 
       return {
         id: variant.id,

@@ -12,6 +12,7 @@ import { validateAndApplyCoupon, AppliedCoupon } from '../services/coupons/coupo
 import { apiRequest } from '../services/api/httpClient';
 import { useAuth } from './AuthContext';
 import { useCity } from './CityContext';
+import { resolveMediaUrl } from '../utils/mediaUrl';
 
 export type CartProduct = {
   id: string;
@@ -189,6 +190,14 @@ export function CartProvider({ children }: PropsWithChildren) {
 
     const mappedItems: CartItem[] = cart.items.map((item) => {
       const compositeId = `${item.productId}-${item.variantId || 'default'}`;
+      // Try all possible image fields and resolve them
+      let imageUrl =
+        resolveMediaUrl(item.imageUrl) ||
+        resolveMediaUrl(item.image) ||
+        resolveMediaUrl(item.productImage);
+      if (!imageUrl) {
+        imageUrl = 'https://cdn-icons-png.flaticon.com/512/2331/2331966.png';
+      }
       return {
         shopId: String(cart.shopId || ''),
         quantity: Number(item.quantity || 0),
@@ -200,7 +209,7 @@ export function CartProvider({ children }: PropsWithChildren) {
           unit: item.variantLabel,
           price: Number(item.price || 0),
           mrp: Number(item.mrp || item.price || 0),
-          imageUrl: item.image || undefined,
+          imageUrl,
           inStock: true,
           shopId: String(cart.shopId || ''),
         },
@@ -307,13 +316,44 @@ export function CartProvider({ children }: PropsWithChildren) {
   ]);
 
   const addItem = async (product: CartProduct, shopId?: string) => {
-    const targetShopId = shopId ?? product.shopId ?? activeShopId ?? 'default-shop';
+
+    const targetShopId = shopId ?? product.shopId ?? activeShopId;
     const normalizedProduct = normalizeProduct(product, targetShopId);
 
     const backendProductId = normalizedProduct.backendProductId;
     const variantId = normalizedProduct.variantId;
 
-    if (isAuthenticated && backendProductId && variantId && targetShopId !== 'default-shop') {
+    // If shopId is missing, always warn
+    if (!targetShopId) {
+      Alert.alert(
+        'Shop not found',
+        'Unable to determine shop for this product. Please try again from the shop page.',
+        [{ text: 'OK', style: 'cancel' }],
+      );
+      return;
+    }
+
+    // If cart has items from another shop, warn and ask to replace
+    if (activeShopId && activeShopId !== targetShopId && items.length > 0) {
+      Alert.alert(
+        'Replace cart items?',
+        'Your cart has items from another shop. If you add this item, your existing cart will be cleared and replaced with items from this shop only.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Clear & Add',
+            onPress: () => {
+              setServerTotals(null);
+              setItems([{ product: normalizedProduct, shopId: targetShopId, quantity: 1 }]);
+              setAppliedCoupon(null);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (isAuthenticated && backendProductId && variantId) {
       try {
         await apiRequest('/api/cart/add-item', {
           method: 'POST',
@@ -331,25 +371,6 @@ export function CartProvider({ children }: PropsWithChildren) {
       } catch {
         // Fallback to local behavior.
       }
-    }
-
-    if (activeShopId && activeShopId !== targetShopId && items.length > 0) {
-      Alert.alert(
-        'Replace cart items?',
-        'Your cart has items from another shop. Clear cart to add this item?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Clear & Add',
-            onPress: () => {
-              setServerTotals(null);
-              setItems([{ product: normalizedProduct, shopId: targetShopId, quantity: 1 }]);
-              setAppliedCoupon(null);
-            },
-          },
-        ],
-      );
-      return;
     }
 
     setItems((previousItems: CartItem[]) =>
